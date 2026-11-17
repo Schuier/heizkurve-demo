@@ -1,0 +1,2480 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Heizkurve – Demo</title>
+<style>
+  :root {
+    --primary-text-color:#212121; --secondary-text-color:#727272; --divider-color:#E0E0E0;
+    --card-background-color:#fff; --secondary-background-color:#F0F0F0; --ha-card-border-radius:16px;
+    --accent:#E2001A;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#EEF0F2; font-family:Roboto, -apple-system, system-ui, "Segoe UI", sans-serif; color:var(--primary-text-color); -webkit-text-size-adjust:100%; }
+  .wrap { max-width:460px; margin:0 auto; padding:max(12px, env(safe-area-inset-top)) 8px 28px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:2px 4px 12px; }
+  header h1 { font-size:20px; margin:0; font-weight:700; }
+  header .firm { font-size:13px; color:var(--secondary-text-color); }
+  .badge { font-size:12px; font-weight:600; color:#fff; background:var(--accent); border-radius:99px; padding:4px 10px; white-space:nowrap; }
+  ha-card { display:block; background:var(--card-background-color); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .sim { background:#fff; border-radius:16px; padding:12px 14px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .sim h2 { font-size:13px; font-weight:600; color:var(--secondary-text-color); margin:0 0 8px; text-transform:uppercase; letter-spacing:.04em; }
+  .row { display:flex; align-items:center; gap:12px; }
+  .row + .row { margin-top:10px; }
+  .row label { flex:0 0 auto; font-size:15px; }
+  .row output { flex:0 0 82px; white-space:nowrap; text-align:right; font-weight:700; font-size:17px; font-variant-numeric:tabular-nums; }
+  input[type=range] { flex:1; accent-color:var(--accent); height:28px; }
+  .seg { display:flex; background:var(--secondary-background-color); border-radius:10px; padding:3px; gap:3px; flex:1; }
+  .seg button { flex:1; border:0; background:transparent; border-radius:8px; padding:7px 4px; font:inherit; font-size:14px; color:var(--secondary-text-color); cursor:pointer; }
+  .seg button.on { background:#fff; color:var(--primary-text-color); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .reset { border:0; background:none; color:var(--accent); font:inherit; font-size:14px; padding:6px 0; cursor:pointer; }
+  .status { font-size:13px; color:var(--secondary-text-color); margin-top:8px; min-height:18px; }
+  .status b { color:var(--primary-text-color); }
+  .hint { font-size:13px; line-height:1.45; color:var(--secondary-text-color); margin:14px 6px 0; }
+  .hint b { color:var(--primary-text-color); font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Heizkurve</h1><div class="firm">Bedienung am Beispiel der Alpha Innotec WZSV 63</div></div>
+    <span class="badge">Demo</span>
+  </header>
+
+  <section class="sim" aria-label="Simulation">
+    <h2>Simulation</h2>
+    <div class="row">
+      <label for="t">Außen jetzt</label>
+      <input id="t" type="range" min="-15" max="15" step="0.5" value="5">
+      <output id="tv">5,0 °C</output>
+    </div>
+    <div class="row">
+      <label>Betrieb</label>
+      <div class="seg" id="mode"><button data-m="day" class="on">Tag</button><button data-m="night">Nacht</button></div>
+    </div>
+    <div class="status" id="st"></div>
+    <button class="reset" id="reset">Alles zurücksetzen</button>
+  </section>
+
+  <div id="c"></div>
+
+  <p class="hint">
+    <b>So geht's:</b> „Gesperrt“ antippen, dann mit <b>−</b> / <b>+</b> verstellen. Die orange Linie zeigt die neue Kurve,
+    die Felder darunter die neuen Temperaturen. Erst <b>„Übernehmen“</b> schreibt die Werte in die Wärmepumpe –
+    hier nur simuliert, es ist keine echte Anlage verbunden.
+  </p>
+</div>
+
+<script>
+/* ---- Material Design Icons (Apache 2.0, Pictogrammers) – nur die hier benötigten ---- */
+const MDI = {
+  "mdi:lock": "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z",
+  "mdi:lock-open-variant": "M18 1C15.24 1 13 3.24 13 6V8H4C2.9 8 2 8.89 2 10V20C2 21.11 2.9 22 4 22H16C17.11 22 18 21.11 18 20V10C18 8.9 17.11 8 16 8H15V6C15 4.34 16.34 3 18 3C19.66 3 21 4.34 21 6V8H23V6C23 3.24 20.76 1 18 1M10 13C11.1 13 12 13.89 12 15C12 16.11 11.11 17 10 17C8.9 17 8 16.11 8 15C8 13.9 8.9 13 10 13Z",
+  "mdi:arrow-up-down": "M17.45,17.55L12,23L6.55,17.55L7.96,16.14L11,19.17V4.83L7.96,7.86L6.55,6.45L12,1L17.45,6.45L16.04,7.86L13,4.83V19.17L16.04,16.14L17.45,17.55Z",
+  "mdi:snowflake-thermometer": "M14.46 9.41L11 7.38V5.12L12.71 3.41L11.29 2L10 3.29L8.71 2L7.29 3.41L9 5.12V7.38L6.5 8.82L4.5 7.69L3.92 5.36L2 5.88L2.47 7.65L.7 8.12L1.22 10.05L3.55 9.43L5.55 10.56V13.45L3.55 14.58L1.22 13.96L.7 15.89L2.47 16.36L2 18.12L3.93 18.64L4.55 16.31L6.55 15.18L9 16.62V18.88L7.29 20.59L8.71 22L10 20.71L11.29 22L12.7 20.59L11 18.88V16.62L14.46 14.61M7.5 10.56L10 9.11L12.5 10.56V13.44L10 14.89L7.5 13.44M19 5C17.89 5 17 5.89 17 7V13.76C16.360 14.33 16 15.15 16 16C16 17.66 17.34 19 19 19S22 17.66 22 16C22 15.15 21.64 14.33 21 13.77V7C21 5.89 20.11 5 19 5M19 6C19.55 6 20 6.450 20 7V8H18V7C18 6.45 18.45 6 19 6",
+  "mdi:chart-bell-curve-cumulative": "M4 19V20H22V22H2V2H4V17C7 17 10 15 12.1 11.4C15.1 6.4 18.4 4 22 4V6C19.2 6 16.5 8.1 13.9 12.5C11.3 16.6 7.7 19 4 19Z",
+  "mdi:weather-night": "M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.950L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.060,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95M17.33,17.97C14.5,17.81 11.7,16.64 9.53,14.5C7.36,12.31 6.2,9.5 6.04,6.68C3.23,9.82 3.34,14.64 6.35,17.66C9.37,20.67 14.19,20.78 17.33,17.97Z",
+  "mdi:arrow-collapse-down": "M19.92,12.08L12,20L4.08,12.08L5.5,10.67L11,16.17V2H13V16.17L18.5,10.66L19.92,12.08M12,20H2V22H22V20H12Z",
+};
+// Ersatz für die Home-Assistant-Elemente <ha-icon> und <ha-card> (eigene Shadow-DOMs, damit die Karte sie nicht überschreibt)
+customElements.define("ha-icon", class extends HTMLElement {
+  static get observedAttributes() { return ["icon"]; }
+  connectedCallback() { this.draw(); }
+  attributeChangedCallback() { this.draw(); }
+  draw() {
+    const r = this.shadowRoot || this.attachShadow({ mode: "open" });
+    const d = MDI[this.getAttribute("icon")] || "";
+    r.innerHTML = `<style>:host{display:inline-flex;vertical-align:middle}svg{width:var(--mdc-icon-size,24px);height:var(--mdc-icon-size,24px);fill:currentColor;display:block}</style><svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
+  }
+});
+customElements.define("ha-card", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    this.attachShadow({ mode: "open" }).innerHTML =
+      `<style>:host{display:block;background:var(--card-background-color,#fff);border-radius:var(--ha-card-border-radius,16px);box-shadow:0 1px 3px rgba(0,0,0,.08)}</style><slot></slot>`;
+  }
+});
+</script>
+
+<script>
+/* ---- Solar.web Heizkurven-Karte (identisch mit Home Assistant) ---- */
+/* Neuzeichnen ohne Austausch: nur geänderte Texte/Attribute anpassen. Elemente bleiben erhalten –
+   wichtig für iOS, sonst bricht Scrollen ab, wenn das Element unter dem Finger ersetzt wird. */
+function swMorph(a, b) {
+  if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) { a.replaceWith(b); return; }
+  if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return; }
+  // SMIL-Animationen (Flusspunkte) bei Änderung neu starten, sonst greift z. B. eine neue Dauer nicht
+  if (/^animate/i.test(a.nodeName) && a.outerHTML !== b.outerHTML) { a.replaceWith(b); return; }
+  for (const at of [...a.attributes]) if (!b.hasAttribute(at.name)) a.removeAttribute(at.name);
+  for (const at of [...b.attributes]) if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
+  if (a.nodeName === "STYLE") { if (a.textContent !== b.textContent) a.textContent = b.textContent; return; }
+  swMorphKids(a, b);
+  if (a.nodeName === "INPUT" && a.value !== (b.getAttribute("value") ?? "")) a.value = b.getAttribute("value") ?? "";
+  if (a.nodeName === "SELECT") { const s = b.querySelector("option[selected]"); if (s && a.value !== s.value) a.value = s.value; }
+}
+function swMorphKids(a, b) {
+  const ac = [...a.childNodes], bc = [...b.childNodes];
+  bc.forEach((n, i) => (ac[i] ? swMorph(ac[i], n) : a.appendChild(n)));
+  for (let i = bc.length; i < ac.length; i++) ac[i].remove();
+}
+function swPatch(root, html) {
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  if (!root.firstChild) root.appendChild(t.content);
+  else swMorphKids(root, t.content);
+}
+// Klick-Handler nur einmal pro Element anbinden (Elemente bleiben ja erhalten)
+function swOn(el, type, key, fn) {
+  if (!el || el["__sw" + key]) return;
+  el["__sw" + key] = 1;
+  el.addEventListener(type, fn);
+}
+
+/*
+ * solarweb-card – Karten im Look der Fronius Solar.web App
+ * Varianten: zuhause · erzeugung · verbrauch · netz · prognose
+ *
+ * Installation: Datei nach /config/www/solarweb-card.js kopieren,
+ * Ressource /local/solarweb-card.js?v=1 (JavaScript-Modul) hinzufügen.
+ */
+
+const DEFAULTS = {
+  pv_energy: "sensor.solarweb_pv_energie_tag",
+  consumption_energy: "sensor.solarweb_verbrauch_energie_tag",
+  import_energy: "sensor.solarweb_netzbezug_energie_tag",
+  export_energy: "sensor.solarweb_einspeisung_energie_tag",
+  battery_charge_energy: "sensor.solarweb_batterie_laden_energie_tag",
+  battery_discharge_energy: "sensor.solarweb_batterie_entladen_energie_tag",
+  house_power: "sensor.solarnet_leistung_verbrauch",
+  forecast_today: ["sensor.energy_production_today", "sensor.energy_production_today_2"], // Forecast.Solar Ost + West
+  forecast_tomorrow: ["sensor.energy_production_tomorrow", "sensor.energy_production_tomorrow_2"],
+  soc: "sensor.reserva_ladezustand",
+};
+
+const TITLES = {
+  uebersicht: "Meine Anlage",
+  zuhause: "Zuhause",
+  erzeugung: "Erzeugung",
+  verbrauch: "Verbrauch",
+  netz: "Netz",
+  prognose: "Erwartete Erzeugung",
+  waerme: "Wärme",
+  werte: "Wärmepumpe",
+  zeiten: "Heizzeiten",
+};
+
+// Luxtronik-Betriebsarten (select) auf Deutsch
+const SELECT_DE = { off: "Aus", automatic: "Automatik", second_heatsource: "Zusatzheizung", party: "Party", holidays: "Ferien" };
+
+// Zeitprogramme (variant: zeiten): Programm-Auswahl + Start/Ende je Tag
+const ZEIT_PROG = { week: "Woche", weekday_weekend: "Mo–Fr / Sa–So", daily: "Einzelne Tage" };
+const ZEIT_ROWS = {
+  week: [["week", "Ganze Woche"]],
+  weekday_weekend: [["weekday", "Werktage"], ["weekdays", "Werktage"], ["weekend", "Wochenende"]],
+  daily: [["monday", "Montag"], ["tuesday", "Dienstag"], ["wednesday", "Mittwoch"], ["thursday", "Donnerstag"],
+          ["friday", "Freitag"], ["saturday", "Samstag"], ["sunday", "Sonntag"]],
+};
+
+// Luxtronik-Betriebszustände auf Deutsch
+const STATUS_DE = {
+  heating: "Heizen",
+  "hot water": "Warmwasser",
+  "swimming pool/solar": "Pool / Solar",
+  evu: "EVU-Sperre",
+  defrost: "Abtauen",
+  "no request": "Leerlauf",
+  "heating external source": "Heizen (extern)",
+  cooling: "Kühlen",
+  off: "Aus",
+};
+
+const C = {
+  blue: "#6AAFD3",
+  green: "#2EA043",
+  orange: "#F5B300",
+  grey: "var(--sw-track)",
+  sun: "linear-gradient(90deg,#B9C43A,#F2D400)",
+};
+
+// Kacheln der Übersicht (variant: uebersicht). Reihenfolge/Auswahl per tiles: [erzeugung, verbrauch, ...]
+const OV_TILES = {
+  erzeugung: { name: "Erzeugung", short: "Erzeugt", color: "#F5B300", unit: "kWh", src: "pv_energy" },
+  verbrauch: { name: "Verbrauch", short: "Verbr.", color: "#6AAFD3", unit: "kWh", src: "consumption_energy" },
+  netzbezug: { name: "Netzbezug", short: "Bezug", color: "#8E949C", unit: "kWh", src: "import_energy" },
+  einspeisung: { name: "Einspeisung", short: "Einsp.", color: "#2EA043", unit: "kWh", src: "export_energy" },
+  batterie: { name: "Batterie", short: "Akku", color: "#2E9E8E", unit: "%", src: "soc" },
+  prognose: { name: "Prognose", short: "Morgen", color: "#F2C200", unit: "kWh", src: "forecast_tomorrow", hatch: true }, // morgen
+  prognose_heute: { name: "Prognose heute", short: "Prog. heute", color: "#F2C200", unit: "kWh", src: "forecast_today", hatch: true },
+};
+const OV_DEFAULT = ["erzeugung", "verbrauch", "netzbezug", "einspeisung"];
+const ovTiles = (c) => (Array.isArray(c.tiles) ? c.tiles : OV_DEFAULT).filter((k) => OV_TILES[k]);
+
+const de = (v, d) =>
+  Number(v).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
+const kwh = (v) => de(v, Math.abs(v) < 10 ? 2 : Math.abs(v) < 1000 ? 1 : 0);
+const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+
+class SolarwebCard extends HTMLElement {
+  setConfig(config) {
+    if (!config.variant || !TITLES[config.variant]) {
+      throw new Error("variant: uebersicht | zuhause | erzeugung | verbrauch | netz | prognose | waerme | werte");
+    }
+    this._cfg = { ...DEFAULTS, ...config };
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    const sig = this._signature();
+    if (sig === this._last) return;
+    this._last = sig;
+    this._render();
+  }
+
+  getCardSize() {
+    const n = (this._cfg?.devices || this._cfg?.items || []).length;
+    return ["zuhause", "werte"].includes(this._cfg?.variant) ? 2 + n : 3;
+  }
+
+  /* ---------- Werte ---------- */
+
+  _ids() {
+    const c = this._cfg;
+    return [
+      c.pv_energy, c.consumption_energy, c.import_energy, c.export_energy,
+      c.battery_charge_energy, c.battery_discharge_energy, c.house_power,
+      ...[].concat(c.forecast_today || [], c.forecast_tomorrow || []), c.soc,
+      ...(c.devices || []).map((d) => d.entity),
+      ...(c.items || []).map((d) => d.entity),
+      ...[].concat(c.heat || [], c.power || []),
+      c.program,
+      ...(c.schedule ? Object.keys(this._hass?.states || {}).filter((k) => k.startsWith(c.schedule)) : []),
+    ];
+  }
+
+  // Summe über eine oder mehrere Energie-Entitäten
+  _sum(ids) {
+    return [].concat(ids || []).reduce((s, id) => s + this._e(id), 0);
+  }
+
+  _signature() {
+    // bei Reglern auch Soll-/Ist-Temperatur beobachten
+    const attrs = (this._cfg.items || []).filter((i) => i.control).map((i) => {
+      const a = this._hass.states[i.entity]?.attributes || {};
+      return `${a.temperature}/${a.current_temperature}`;
+    });
+    return this._ids().map((id) => this._hass.states[id]?.state).concat(attrs).join("|");
+  }
+
+  // mindestens eine von mehreren Entitäten hat einen Wert
+  _anyHas(ids) {
+    return [].concat(ids || []).some((id) => this._has(id));
+  }
+
+  _has(id) {
+    const s = this._hass.states[id];
+    return s && !["unknown", "unavailable"].includes(s.state);
+  }
+
+  // Energie immer in kWh
+  _e(id) {
+    const s = this._hass.states[id];
+    const v = parseFloat(s?.state);
+    if (isNaN(v)) return 0;
+    const u = s.attributes.unit_of_measurement;
+    if (u === "Wh") return v / 1000;
+    if (u === "MWh") return v * 1000;
+    return v;
+  }
+
+  // Leistung immer in W
+  _p(id) {
+    const s = this._hass.states[id];
+    const v = parseFloat(s?.state);
+    if (isNaN(v)) return 0;
+    return s.attributes.unit_of_measurement === "kW" ? v * 1000 : v;
+  }
+
+  /* ---------- Aktionen ---------- */
+
+  _open(entityId) {
+    const nav = this._cfg.navigation_path;
+    if (nav) {
+      // relativ ("energie") = andere Ansicht im selben Dashboard
+      const url = nav.startsWith("/")
+        ? nav
+        : location.pathname.split("/").slice(0, 2).join("/") + "/" + nav;
+      history.pushState(null, "", url);
+      window.dispatchEvent(new CustomEvent("location-changed", { composed: true }));
+      return;
+    }
+    if (!entityId) return;
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId } })
+    );
+  }
+
+  /* ---------- Bausteine ---------- */
+
+  _bar(parts) {
+    const total = parts.reduce((s, p) => s + Math.max(p.v, 0), 0);
+    if (total <= 0) return `<div class="bar"><span style="flex:1;background:${C.grey}"></span></div>`;
+    return `<div class="bar">${parts
+      .filter((p) => p.v > 0)
+      .map((p) => `<span style="flex:${p.v / total};background:${p.c}"></span>`)
+      .join("")}</div>`;
+  }
+
+  _big(v, unit) {
+    return `<span class="big">${v}</span><span class="unit">${unit}</span>`;
+  }
+
+  _head(right = `<ha-icon icon="mdi:chevron-right"></ha-icon>`) {
+    return `<div class="head"><span class="title">${this._cfg.title || TITLES[this._cfg.variant]}</span>${right}</div>`;
+  }
+
+  // kompaktes Layout: Titel + Wert in einer Zeile, Balken, Details in einer Zeile
+  _isDense() { const c = this._cfg; return c.layout ? c.layout === "dense" : !!c.compact; }
+  _dense(big, bar, items, note = "") {
+    const it = ([col, name, v, u]) =>
+      `<span>${col ? `<i style="background:${col}"></i>` : ""}${name} <b>${v}</b>${u ? ` ${u}` : ""}</span>`;
+    return `<div class="head dense"><span class="title">${this._cfg.title || TITLES[this._cfg.variant]}${note ? `<span class="note">${note}</span>` : ""}</span>
+        <span>${big}</span></div>${bar}<div class="mini">${items.map(it).join("")}</div>`;
+  }
+
+  /* ---------- Varianten ---------- */
+
+  // Tagesübersicht wie das Solar.web-Widget: Kacheln in frei wählbarer Reihenfolge (tiles: [...]), siehe OV_TILES
+  _uebersicht() {
+    const c = this._cfg, H = this._hass.states;
+    // Name lang + kurz; bei schmalen Feldern zeigt CSS den Kurznamen und setzt die Einheit unter die Zahl
+    const tile = (col, name, v, u, id, hatch, short) =>
+      `<div class="tile${hatch ? " hatch" : ""}" data-id="${id || ""}" style="--c:${col}"><span class="lbl"><span class="l">${name}</span><span class="s">${short || name}</span></span><span class="tv"><b>${v}</b><small>${u}</small></span></div>`;
+    const keys = ovTiles(c);
+    const val = (k) => k === "batterie"
+      ? (this._has(c.soc) ? Math.round(parseFloat(H[c.soc].state)) : "–")
+      : OV_TILES[k].hatch && !this._anyHas(c[OV_TILES[k].src]) ? "–" : kwh(this._sum(c[OV_TILES[k].src]));
+    const ids = [c.pv_energy, c.consumption_energy, c.import_energy, c.export_energy].filter((id) => H[id]);
+    const t = Math.max(0, ...ids.map((id) => Date.parse(H[id].last_updated) || 0));
+    const time = t ? new Date(t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "–";
+    const logo = c.logo === false ? ""
+      : c.logo ? `<img class="logo" src="${c.logo}" alt="">`
+      : `<span class="logo"><ha-icon icon="${c.icon || "mdi:solar-power-variant"}"></ha-icon></span>`;
+    return {
+      main: c.pv_energy,
+      // Kopfzeile nur, wenn title gesetzt ist
+      html: `${c.title ? `<div class="head ov"><span class="title">${c.title}</span><span class="when">(${c.label || "Heute"})</span>${logo}</div>` : ""}
+        <div class="tiles" style="grid-template-columns:repeat(${Math.max(keys.length, 1)}, minmax(0, 1fr))">
+          ${keys.map((k) => { const d = OV_TILES[k]; return tile(d.color, d.name, val(k), d.unit, [].concat(c[d.src] || [])[0], d.hatch, d.short); }).join("")}
+        </div>${c.show_updated ? `<div class="upd">Aktualisiert: ${time}</div>` : ""}`,
+    };
+  }
+
+  _erzeugung() {
+    const c = this._cfg;
+    const pv = this._e(c.pv_energy);
+    const exp = this._e(c.export_energy);
+    const chg = this._e(c.battery_charge_energy);
+    const self = Math.max(Math.min(pv - exp, pv), 0);
+    const toBatt = Math.min(chg, self);
+    const direct = self - toBatt;
+    const barE = this._bar([{ v: direct, c: C.blue }, { v: toBatt, c: C.green }, { v: exp, c: C.grey }]);
+    if (this._isDense()) return { main: c.pv_energy, html: this._dense(this._big(kwh(pv), "kWh"), barE, [
+      [C.blue, "Direkt", kwh(direct), "kWh"], [C.green, "Batterie", kwh(toBatt), "kWh"], [C.grey, "Netz", kwh(exp), "kWh"]], `${pct(self, pv)} % Eigennutzung`) };
+    return {
+      main: c.pv_energy,
+      html: `${this._head()}
+        <div class="row"><span class="label">Heute</span><span>${this._big(kwh(pv), "kWh")}</span></div>
+        ${this._bar([{ v: direct, c: C.blue }, { v: toBatt, c: C.green }, { v: exp, c: C.grey }])}
+        <div class="foot"><span>Eigennutzung</span><span>${kwh(self)} kWh | ${pct(self, pv)} %</span></div>`,
+    };
+  }
+
+  _verbrauch() {
+    const c = this._cfg;
+    const cons = this._e(c.consumption_energy);
+    const imp = this._e(c.import_energy);
+    const dis = this._e(c.battery_discharge_energy);
+    const selfSup = Math.max(cons - imp, 0);
+    const fromBatt = Math.min(dis, selfSup);
+    const fromPv = selfSup - fromBatt;
+    const barV = this._bar([{ v: fromPv, c: C.orange }, { v: fromBatt, c: C.green }, { v: imp, c: C.grey }]);
+    if (this._isDense()) return { main: c.consumption_energy, html: this._dense(this._big(kwh(cons), "kWh"), barV, [
+      [C.orange, "PV", kwh(fromPv), "kWh"], [C.green, "Batterie", kwh(fromBatt), "kWh"], [C.grey, "Netz", kwh(imp), "kWh"]], `${pct(selfSup, cons)} % Selbstversorgung`) };
+    return {
+      main: c.consumption_energy,
+      html: `${this._head()}
+        <div class="row"><span class="label">Heute</span><span>${this._big(kwh(cons), "kWh")}</span></div>
+        ${this._bar([{ v: fromPv, c: C.orange }, { v: fromBatt, c: C.green }, { v: imp, c: C.grey }])}
+        <div class="foot"><span>Selbstversorgung</span><span>${kwh(selfSup)} kWh | ${pct(selfSup, cons)} %</span></div>`,
+    };
+  }
+
+  _netz() {
+    const c = this._cfg;
+    const imp = this._e(c.import_energy);
+    const exp = this._e(c.export_energy);
+    const barN = this._bar([{ v: imp, c: C.grey }, { v: exp, c: C.blue }]);
+    if (this._isDense()) return { main: c.import_energy, html: this._dense("", barN, [
+      [C.grey, "Import", kwh(imp), "kWh"], [C.blue, "Export", kwh(exp), "kWh"]]) };
+    return {
+      main: c.import_energy,
+      html: `${this._head()}
+        <div class="row"><span class="label">Heute</span></div>
+        ${this._bar([{ v: imp, c: C.grey }, { v: exp, c: C.blue }])}
+        <div class="split">
+          <div>${this._big(kwh(imp), "kWh")}<div class="sub">Import</div></div>
+          <div class="r">${this._big(kwh(exp), "kWh")}<div class="sub">Export</div></div>
+        </div>`,
+    };
+  }
+
+  _prognose() {
+    const c = this._cfg;
+    if (!this._anyHas(c.forecast_today)) {
+      return {
+        main: null,
+        html: `${this._head("")}<div class="foot"><span>Keine Prognose – Integration „Forecast.Solar“ einrichten</span></div>`,
+      };
+    }
+    const today = this._sum(c.forecast_today);
+    const tomorrow = this._sum(c.forecast_tomorrow);
+    const done = this._e(c.pv_energy);
+    const day = (label, v, bar) => `
+      <div class="row"><span class="label">${label}</span><span>${this._big(kwh(v), "kWh")}</span></div>
+      <div class="fc"><ha-icon icon="mdi:weather-partly-cloudy"></ha-icon>${bar}</div>`;
+    return {
+      main: c.forecast_today,
+      html: `${this._head()}
+        ${day("Heute", today, this._bar([{ v: Math.min(done, today), c: C.sun }, { v: Math.max(today - done, 0), c: C.grey }]))}
+        ${this._anyHas(c.forecast_tomorrow) ? day("Morgen", tomorrow, this._bar([{ v: 1, c: C.sun }])) : ""}`,
+    };
+  }
+
+  _item(name, icon, color, valHtml, id, sub) {
+    return `
+      <div class="dev" data-id="${id || ""}">
+        <span class="ic" style="--c:${color}"><ha-icon icon="${icon}"></ha-icon></span>
+        <span class="name">${name}${sub ? `<small>${sub}</small>` : ""}</span>
+        <span class="val">${valHtml}</span>
+      </div>`;
+  }
+
+  _zuhause() {
+    const c = this._cfg;
+    const house = this._p(c.house_power);
+    const devices = (c.devices || []).map((d) => ({ ...d, w: this._p(d.entity) }));
+    const base = Math.max(house - devices.reduce((s, d) => s + d.w, 0), 0);
+    const w = (v) => (v >= 10000 ? this._big(de(v / 1000, 1), "kW") : this._big(Math.round(v), "W"));
+    return {
+      main: c.house_power,
+      html: `${this._head(`<ha-icon icon="mdi:view-grid-outline"></ha-icon>`)}
+        ${this._item("Basisverbrauch", "mdi:power-plug-outline", C.blue, w(base), c.house_power)}
+        ${devices
+          .map((d) =>
+            this._item(
+              d.name,
+              d.icon || "mdi:flash",
+              d.color || C.blue,
+              // nicht erreichbar → „–“ statt irreführender 0 W
+              this._has(d.entity) ? w(d.w) : `<span class="txt na">nicht verfügbar</span>`,
+              d.entity
+            )
+          )
+          .join("")}`,
+    };
+  }
+
+  // Wärme = Strom + Umweltwärme, wie Erzeugung/Verbrauch aufgebaut
+  _waerme() {
+    const c = this._cfg;
+    let heat = this._sum(c.heat);
+    let power = this._sum(c.power);
+    // Arbeitszahl: bei Tageswerten erst ab cop_min kWh Wärme (Standard 5), vorher der Wert von gestern
+    const daily = c.daily ?? !c.label;
+    const copMin = c.cop_min ?? 5;
+    let copName = c.cop_label || (daily ? "AZ heute" : "Arbeitszahl");
+    let cop = power > 0 ? de(heat / power, 1) : "–";
+    if (daily && heat < copMin) {
+      const y = this._yesterdayAZ();
+      if (y != null) { copName = "AZ gestern"; cop = de(y, 1); } else cop = "–";
+    }
+    // Tageswerte noch leer (nach Mitternacht, vor dem ersten Lauf) → komplett die Werte von gestern zeigen
+    let past = false;
+    const today0 = new Date().setHours(0, 0, 0, 0);
+    if (daily && heat < 0.05 && power < 0.05 && this._yd?.day === today0 && this._yd.h > 0) {
+      heat = this._yd.h; power = this._yd.p; past = true;
+      copName = "Arbeitszahl"; cop = this._yd.cop != null ? de(this._yd.cop, 1) : "–";
+    }
+    const env = Math.max(heat - power, 0);
+    // layout: tiles = eine Zeile Kacheln wie die Übersicht: Name | Wärme | Strom | Umwelt | AZ
+    if (c.layout === "tiles") {
+      const t = (col, name, short, v, u, id) =>
+        `<div class="tile" data-id="${id || ""}" style="--c:${col}"><span class="lbl"><span class="l">${name}</span><span class="s">${short}</span></span><span class="tv"><b>${v}</b>${u ? `<small>${u}</small>` : ""}</span></div>`;
+      const per = past ? "gestern" : c.label || "heute";
+      const azShort = copName === "AZ gestern" ? "AZ gest." : "AZ";
+      const ids = [[].concat(c.heat)[0], [].concat(c.power)[0]];
+      return {
+        main: ids[0],
+        html: `<div class="tiles wt">
+            <div class="tile ttl"><span class="lbl">${per}</span><span class="tv"><b>${c.title || TITLES[c.variant]}</b></span></div>
+            ${t("#F57C00", "Wärme", "Wärme", kwh(heat), "kWh", ids[0])}
+            ${t(C.blue, "Strom", "Strom", kwh(power), "kWh", ids[1])}
+            ${t(C.green, "Umwelt", "Umwelt", kwh(env), "kWh", ids[0])}
+            ${t("#8E949C", copName === "Arbeitszahl" || copName === "AZ heute" ? "AZ" : copName, azShort, cop, "", ids[0])}
+          </div>`,
+      };
+    }
+    // layout: dense (Standard bei compact: true) = Titel + Summe in einer Zeile, Details in einer Zeile
+    const dense = c.layout ? c.layout === "dense" : !!c.compact;
+    if (dense) {
+      const it = (col, name, v, u) =>
+        `<span>${col ? `<i style="background:${col}"></i>` : ""}${name} <b>${v}</b>${u ? ` ${u}` : ""}</span>`;
+      return {
+        main: [].concat(c.heat)[0],
+        html: `<div class="head dense"><span class="title">${c.title || TITLES[c.variant]}${past ? `<span class="note">gestern</span>` : ""}</span>
+            <span>${this._big(kwh(heat), "kWh")}</span></div>
+          ${this._bar([{ v: power, c: C.blue }, { v: env, c: C.green }])}
+          <div class="mini">${it(C.blue, "Strom", kwh(power), "kWh")}${it(C.green, "Umwelt", kwh(env), "kWh")}${it("", copName, cop)}</div>`,
+      };
+    }
+    return {
+      main: [].concat(c.heat)[0],
+      html: `${this._head()}
+        <div class="row"><span class="label">${past ? "Gestern" : c.label || "Heute"}</span><span>${this._big(kwh(heat), "kWh")}</span></div>
+        ${this._bar([{ v: power, c: C.blue }, { v: env, c: C.green }])}
+        <div class="split">
+          <div>${this._big(kwh(power), "kWh")}<div class="sub">Strom</div></div>
+          <div class="r">${this._big(kwh(env), "kWh")}<div class="sub">Umweltwärme</div></div>
+        </div>
+        <div class="foot top"><span>${copName}</span><span>${cop}</span></div>`,
+    };
+  }
+
+  // Arbeitszahl von gestern aus dem Verlauf der Tageszähler (letzter Wert vor Mitternacht), 1× pro Tag geladen
+  _yesterdayAZ() {
+    const c = this._cfg, today = new Date(); today.setHours(0, 0, 0, 0);
+    const key = today.getTime();
+    if (this._yd?.day === key) return this._yd.cop;
+    if (this._ydLoading === key) return null;
+    this._ydLoading = key;
+    const ids = [...[].concat(c.heat), ...[].concat(c.power)];
+    const start = new Date(key - 86400e3 + 120e3); // 2 min nach Mitternacht, damit der Vortageswert vor dem Reset nicht mitzählt
+    this._hass.callWS({ type: "history/history_during_period", start_time: start.toISOString(), end_time: today.toISOString(),
+      entity_ids: ids, minimal_response: true, no_attributes: true })
+      .then((res) => {
+        // letzter gültiger Wert vor Mitternacht = Tagesendstand (nicht das Maximum – Ausreißer beim Zähler-Reset)
+        const last = (id) => { const v = (res[id] || []).map((x) => parseFloat(x.s)).filter((x) => !isNaN(x)); return v.length ? Math.max(v[v.length - 1], 0) : 0; };
+        const sum = (list) => [].concat(list).reduce((t, id) => {
+          const u = (this._hass.states[id]?.attributes.unit_of_measurement || "kWh").toLowerCase();
+          return t + last(id) / (u === "wh" ? 1000 : 1);
+        }, 0);
+        const h = sum(c.heat), p = sum(c.power);
+        this._yd = { day: key, cop: p > 0 && h > 0 ? h / p : null, h, p };
+      })
+      .catch(() => { this._yd = { day: key, cop: null }; })
+      .finally(() => { this._last = null; this.hass = this._hass; });
+    return null;
+  }
+
+  // Liste beliebiger Werte (Leistung, Temperatur, Status …)
+  _werte() {
+    const c = this._cfg;
+    const fmt = (it) => {
+      const s = this._hass.states[it.entity];
+      if (!s) return `<span class="txt">–</span>`;
+      // control: true → Soll-Temperatur mit − / + (climate, water_heater)
+      if (it.control) {
+        const num = it.entity.startsWith("number.") || it.entity.startsWith("input_number.");
+        const t = this._pend?.[it.entity] ?? (num ? parseFloat(s.state) : s.attributes.temperature);
+        const u = it.unit ?? (num ? s.attributes.unit_of_measurement : "°C") ?? "";
+        const off = c.lock && this._locked !== false ? " off" : "";
+        return `<span class="step${off}" data-ctl="${it.entity}" data-u="${u}"><button data-d="-1">−</button><b>${t == null || isNaN(t) ? "–" : de(t, it.decimals ?? 1) + (u ? " " + u : "")}</b><button data-d="1">+</button></span>`;
+      }
+      const lockedRow = c.lock && this._locked !== false ? " disabled" : "";
+      // select: true → Auswahlliste (select-Entität), labels: { option: "Text" }
+      if (it.select) {
+        const opts = s.attributes.options || [];
+        return `<select class="sel" style="--c:${it.color || C.blue}" data-sel="${it.entity}"${lockedRow}>${opts.map((o) =>
+          `<option value="${o}"${o === s.state ? " selected" : ""}>${it.labels?.[o] ?? SELECT_DE[o] ?? o}</option>`).join("")}</select>`;
+      }
+      // date: true → Datumsfeld (date-Entität)
+      if (it.date) {
+        return `<input type="date" class="tm" style="--c:${it.color || C.blue}" data-date="${it.entity}" value="${String(s.state).slice(0, 10)}"${lockedRow}>`;
+      }
+      // toggle: true → Schalter (Automation, Switch …)
+      if (it.toggle) return `<span class="tog${s.state === "on" ? " on" : ""}" data-tog="${it.entity}"></span>`;
+      const v = parseFloat(s.state);
+      if (isNaN(v) || it.text) {
+        const t = it.labels?.[s.state] ?? STATUS_DE[s.state] ?? STATUS_DE[String(s.state).replace(/_/g, " ")] ?? s.state;
+        return `<span class="txt">${t}</span>`;
+      }
+      const u = it.unit ?? s.attributes.unit_of_measurement ?? "";
+      const d = it.decimals ?? (u === "W" ? 0 : u === "kW" ? 2 : 1);
+      return this._big(de(v, d), u);
+    };
+    const items = c.items || [];
+    return {
+      main: items[0]?.entity,
+      html: `${this._head(c.lock
+          ? `<button class="lock">${this._locked !== false ? `<ha-icon icon="mdi:lock"></ha-icon>Gesperrt` : `<ha-icon icon="mdi:lock-open-variant"></ha-icon>Offen`}</button>`
+          : c.icon ? `<ha-icon icon="${c.icon}"></ha-icon>` : "")}
+        ${items.map((it) => {
+          const a = this._hass.states[it.entity]?.attributes || {};
+          const sub = it.sub ?? (it.control && a.current_temperature != null ? `Ist ${de(a.current_temperature, 1)} °C` : "");
+          return this._item(it.name, it.icon || "mdi:flash", it.color || C.blue, fmt(it), it.entity, sub);
+        }).join("")}`,
+    };
+  }
+
+  // Zeitprogramm: Programm umschalten, Start/Ende je Tag (text-Entitäten "HH:MM-HH:MM")
+  _zeiten() {
+    const c = this._cfg, H = this._hass.states;
+    const locked = c.lock !== false && this._locked !== false;
+    const prog = H[c.program]?.state;
+    const labels = { ...ZEIT_PROG, ...(c.labels || {}) };
+    const opts = H[c.program]?.attributes.options || Object.keys(ZEIT_PROG);
+    const seg = c.program ? `<div class="seg${locked ? " off" : ""}">${opts.map((o) =>
+      `<button data-opt="${o}" class="${o === prog ? "on" : ""}">${labels[o] || o}</button>`).join("")}</div>` : "";
+    let rows = (ZEIT_ROWS[prog] || ZEIT_ROWS.daily).filter(([k]) => H[c.schedule + k]);
+    // Fallback: alle vorhandenen Zeitpläne mit diesem Präfix
+    if (!rows.length) rows = Object.keys(H).filter((k) => k.startsWith(c.schedule))
+      .map((k) => [k.slice(c.schedule.length), H[k].attributes.friendly_name?.replace(/.*\((.*)\)$/, "$1") || k.slice(c.schedule.length)]);
+    const start = c.start_color || "#2EA043", end = c.end_color || "#F57C00";
+    const body = rows.length ? rows.map(([k, name]) => {
+      const id = c.schedule + k, m = /^(\d\d:\d\d)-(\d\d:\d\d)(.*)$/.exec(H[id].state) || [];
+      // Start/Ende mit − / + (time_step Minuten, Standard 15)
+      const tm = (v, col, part) => `<span class="step zt${locked ? " off" : ""}" style="--c:${col}" data-zt="${id}" data-part="${part}"><button data-d="-1">−</button><b>${this._zpend?.[id + part] ?? v ?? "–"}</b><button data-d="1">+</button></span>`;
+      return `<div class="dev" data-id="${id}">
+          ${c.row_icon ? `<span class="ic" style="--c:${c.color || "#94539F"}"><ha-icon icon="${c.row_icon}"></ha-icon></span>` : ""}
+          <span class="name">${name}</span>
+          <span class="tms">${tm(m[1], start, 1)}${tm(m[2], end, 2)}</span>
+        </div>`;
+    }).join("") : `<div class="foot" style="margin-top:10px">Für „${labels[prog] || prog}“ liefert die Wärmepumpe keine Zeiten.</div>`;
+    return {
+      main: c.program,
+      html: `${this._head(`<button class="lock">${locked ? `<ha-icon icon="mdi:lock"></ha-icon>Gesperrt` : `<ha-icon icon="mdi:lock-open-variant"></ha-icon>Offen`}</button>`)}
+        ${seg}${body}`,
+    };
+  }
+
+  /* ---------- Render ---------- */
+
+  _render() {
+    if (!this._hass || !this._cfg) return;
+    const { main, html } = this["_" + this._cfg.variant]();
+    swPatch(this.shadowRoot, `<style>${STYLE}</style><ha-card class="v-${this._cfg.variant}" style="${this._design()}">${html}</ha-card>`);
+    swOn(this.shadowRoot.querySelector(".head"), "click", 535, () => this._open(main));
+    // Regler: sofort anzeigen, Dienst erst nach kurzer Pause aufrufen
+    this.shadowRoot.querySelectorAll(".step button").forEach((b) => swOn(b, "click", 537, (e) => {
+      e.stopPropagation();
+      const id = b.parentElement.dataset.ctl, st = this._hass.states[id];
+      if (!st || b.parentElement.classList.contains("off")) return;
+      const a = st.attributes, dom = id.split(".")[0], num = dom === "number" || dom === "input_number";
+      const step = (num ? a.step : a.target_temp_step) || 0.5;
+      const lo = (num ? a.min : a.min_temp) ?? -99, hi = (num ? a.max : a.max_temp) ?? 99;
+      this._pend = this._pend || {};
+      let t = (this._pend[id] ?? (num ? parseFloat(st.state) : a.temperature) ?? 0) + Number(b.dataset.d) * step;
+      t = Math.min(hi, Math.max(lo, Math.round(t / step) * step));
+      t = Math.round(t * 100) / 100;
+      this._pend[id] = t;
+      const u = b.parentElement.dataset.u;
+      b.parentElement.querySelector("b").textContent = de(t, 1) + (u ? " " + u : "");
+      this._relock();
+      clearTimeout(this._tmr?.[id]);
+      this._tmr = this._tmr || {};
+      this._tmr[id] = setTimeout(() => {
+        (num ? this._hass.callService(dom, "set_value", { entity_id: id, value: t })
+          : this._hass.callService(dom, "set_temperature", { entity_id: id, temperature: t }))
+          .finally(() => setTimeout(() => { delete this._pend[id]; this._last = null; this.hass = this._hass; }, 3000));
+      }, 900);
+    }));
+    this.shadowRoot.querySelectorAll(".sel").forEach((el) => {
+      swOn(el, "click", 561, (e) => e.stopPropagation());
+      swOn(el, "change", 562, () => {
+        this._hass.callService("select", "select_option", { entity_id: el.dataset.sel, option: el.value });
+        this._relock();
+      });
+    });
+    this.shadowRoot.querySelectorAll("input[data-date]").forEach((el) => {
+      // entsperrt: Klick öffnet direkt den Kalender
+      swOn(el, "click", 569, (e) => { e.stopPropagation(); if (!el.disabled) try { el.showPicker(); } catch (_) {} });
+      swOn(el, "change", 570, () => {
+        if (!/^\d{4}-\d\d-\d\d$/.test(el.value)) return;
+        this._hass.callService("date", "set_value", { entity_id: el.dataset.date, date: el.value });
+        this._relock();
+      });
+    });
+    this.shadowRoot.querySelectorAll(".seg button").forEach((b) => swOn(b, "click", 576, (e) => {
+      e.stopPropagation();
+      if (b.parentElement.classList.contains("off") || b.classList.contains("on")) return;
+      this._hass.callService("select", "select_option", { entity_id: this._cfg.program, option: b.dataset.opt });
+      this._relock();
+    }));
+    this.shadowRoot.querySelectorAll(".step.zt button").forEach((b) => swOn(b, "click", 582, (e) => {
+      e.stopPropagation();
+      const box = b.parentElement;
+      if (box.classList.contains("off")) return;
+      const id = box.dataset.zt, part = box.dataset.part, stp = this._cfg.time_step || 15;
+      this._zpend = this._zpend || {};
+      const cur = this._zpend[id + part] ?? box.querySelector("b").textContent;
+      const [hh, mm] = cur.split(":").map(Number);
+      let t = (hh * 60 + mm) + Number(b.dataset.d) * stp;
+      t = Math.min(24 * 60 - stp, Math.max(0, Math.round(t / stp) * stp));
+      const v = String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0");
+      this._zpend[id + part] = v;
+      box.querySelector("b").textContent = v;
+      this._relock();
+      this._ztmr = this._ztmr || {};
+      clearTimeout(this._ztmr[id]);
+      this._ztmr[id] = setTimeout(() => {
+        const m = /^(\d\d:\d\d)-(\d\d:\d\d)(.*)$/.exec(this._hass.states[id]?.state || "") || [null, "00:00", "00:00", ""];
+        const val = (this._zpend[id + "1"] ?? m[1]) + "-" + (this._zpend[id + "2"] ?? m[2]) + (m[3] || "");
+        this._hass.callService("text", "set_value", { entity_id: id, value: val })
+          .finally(() => setTimeout(() => { delete this._zpend[id + "1"]; delete this._zpend[id + "2"]; this._last = null; this.hass = this._hass; }, 3000));
+      }, 900);
+    }));
+    this.shadowRoot.querySelectorAll(".tm").forEach((inp) => {
+      swOn(inp, "click", 606, (e) => e.stopPropagation());
+      swOn(inp, "change", 607, () => {
+        const id = inp.dataset.id, cur = this._hass.states[id]?.state || "";
+        const m = /^(\d\d:\d\d)-(\d\d:\d\d)(.*)$/.exec(cur) || [null, "00:00", "00:00", ""];
+        const v = inp.value;
+        if (!/^\d\d:\d\d$/.test(v)) return;
+        const val = (inp.dataset.part === "1" ? v : m[1]) + "-" + (inp.dataset.part === "2" ? v : m[2]) + (m[3] || "");
+        this._hass.callService("text", "set_value", { entity_id: id, value: val });
+        this._relock();
+      });
+    });
+    swOn(this.shadowRoot.querySelector(".lock"), "click", 617, (e) => {
+      e.stopPropagation();
+      this._locked = this._locked === false; // umschalten
+      this._relock();
+      this._render();
+    });
+    this.shadowRoot.querySelectorAll(".tog").forEach((t) => swOn(t, "click", 623, (e) => {
+      e.stopPropagation();
+      t.classList.toggle("on");
+      this._hass.callService("homeassistant", "toggle", { entity_id: t.dataset.tog });
+    }));
+    this.shadowRoot.querySelectorAll(".tile").forEach((el) =>
+      swOn(el, "click", 629, () => this._open(el.dataset.id))
+    );
+    this.shadowRoot.querySelectorAll(".dev").forEach((el) =>
+      swOn(el, "click", 632, () => el.dataset.id && this._open(el.dataset.id))
+    );
+  }
+
+  /* Design-Optionen (YAML), alle optional, Zahlen in Pixel:
+       compact: true   kompakte Voreinstellung (Wärme-Karten zusätzlich layout: dense)
+       layout: dense | normal   (nur variant: waerme)
+       scale: 0.8      ganze Karte verkleinern/vergrößern
+       padding, title_size, icon_size, row_padding, row_gap, row_border (true/false),
+       font_size (Namen/Beschriftung), value_size (Werte in Zeilen), big_size (große Zahlen) */
+  _design() {
+    const c = this._cfg;
+    const v = c.compact
+      ? { pad: 14, head: 10, title: 17, rowmb: 8, big: 24, barmb: 10, label: 15, sub: 14, foot: 14, icon: 34, py: 5, gap: 6, name: 15, val: 20, ftop: 10 }
+      : {};
+    const n = (k) => (c[k] != null && !isNaN(parseFloat(c[k])) ? parseFloat(c[k]) : null);
+    if (n("padding") != null) v.pad = n("padding");
+    if (n("title_size") != null) v.title = n("title_size");
+    if (n("icon_size") != null) v.icon = n("icon_size");
+    if (n("row_padding") != null) v.py = n("row_padding");
+    if (n("row_gap") != null) v.gap = n("row_gap");
+    if (n("font_size") != null) v.name = v.label = n("font_size");
+    if (n("value_size") != null) v.val = n("value_size");
+    if (n("big_size") != null) v.big = n("big_size");
+    const css = Object.entries(v).map(([k, x]) => `--sw-${k}:${x}px`);
+    if (c.row_border === false) css.push("--sw-border:0");
+    const z = Number(c.scale) || 1;
+    if (z !== 1) css.push(`zoom:${z}`);
+    return css.join(";");
+  }
+
+  // lock: true → Regler gesperrt; nach Entsperren automatisch wieder sperren (auto_lock Sekunden, Standard 60)
+  _relock() {
+    clearTimeout(this._lockTmr);
+    const lockable = this._cfg.lock || (this._cfg.variant === "zeiten" && this._cfg.lock !== false);
+    if (!lockable || this._locked !== false) return;
+    this._lockTmr = setTimeout(() => { this._locked = true; this._render(); }, (this._cfg.auto_lock ?? 60) * 1000);
+  }
+
+  static getStubConfig() {
+    return { variant: "uebersicht" };
+  }
+
+  static getConfigElement() {
+    return document.createElement("solarweb-card-editor");
+  }
+}
+
+/* Karten-Editor (Stift-Symbol): nur für variant: uebersicht – Kacheln an/aus und mit Pfeilen verschieben.
+   Andere Varianten → Home Assistant zeigt automatisch den YAML-Editor. */
+class SolarwebCardEditor extends HTMLElement {
+  setConfig(config) {
+    if (config.variant !== "uebersicht") throw new Error("Visueller Editor nur für variant: uebersicht – bitte YAML verwenden");
+    this._c = { ...config };
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._render();
+  }
+
+  set hass(h) { this._hass = h; }
+
+  _order() {
+    // aktive Kacheln zuerst (in ihrer Reihenfolge), dann die ausgeblendeten
+    const on = ovTiles(this._c);
+    return [...on, ...Object.keys(OV_TILES).filter((k) => !on.includes(k))].map((k) => ({ k, on: on.includes(k) }));
+  }
+
+  _save(list) {
+    this._c = { ...this._c, tiles: list.filter((x) => x.on).map((x) => x.k) };
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._c }, bubbles: true, composed: true }));
+    this._render();
+  }
+
+  _render() {
+    const list = this._order();
+    this.shadowRoot.innerHTML = `<style>
+        .hint { font-size:14px; color:var(--secondary-text-color); margin:0 0 10px; }
+        .row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--divider-color, #E0E0E0);
+          border-radius:10px; margin-bottom:6px; background:var(--card-background-color, #fff); }
+        .row.off { opacity:.5; }
+        .bar { width:5px; height:26px; border-radius:2px; background:var(--c); flex:none; }
+        .name { flex:1; font-size:16px; }
+        button { border:0; background:var(--secondary-background-color, #F0F0F0); color:var(--primary-text-color); font-size:18px;
+          width:36px; height:36px; border-radius:8px; cursor:pointer; line-height:1; }
+        button:disabled { opacity:.3; cursor:default; }
+        input { width:20px; height:20px; accent-color:var(--primary-color); cursor:pointer; }
+      </style>
+      <p class="hint">Haken = anzeigen · Pfeile = Reihenfolge (oben = links)</p>
+      ${list.map((x, i) => `<div class="row${x.on ? "" : " off"}">
+          <input type="checkbox" data-i="${i}" ${x.on ? "checked" : ""}>
+          <span class="bar" style="--c:${OV_TILES[x.k].color}"></span>
+          <span class="name">${OV_TILES[x.k].name}</span>
+          <button data-up="${i}" ${i === 0 || !x.on ? "disabled" : ""} aria-label="nach oben">▲</button>
+          <button data-down="${i}" ${!x.on || !list[i + 1]?.on ? "disabled" : ""} aria-label="nach unten">▼</button>
+        </div>`).join("")}`;
+    const swap = (i, j) => { const l = this._order(); [l[i], l[j]] = [l[j], l[i]]; this._save(l); };
+    this.shadowRoot.querySelectorAll("[data-up]").forEach((b) => b.addEventListener("click", () => swap(+b.dataset.up, +b.dataset.up - 1)));
+    this.shadowRoot.querySelectorAll("[data-down]").forEach((b) => b.addEventListener("click", () => swap(+b.dataset.down, +b.dataset.down + 1)));
+    this.shadowRoot.querySelectorAll("input").forEach((cb) => cb.addEventListener("change", () => {
+      const l = this._order(); l[+cb.dataset.i].on = cb.checked;
+      // neu eingeschaltete Kachel ans Ende der sichtbaren
+      this._save([...l.filter((x) => x.on), ...l.filter((x) => !x.on)]);
+    }));
+  }
+}
+customElements.define("solarweb-card-editor", SolarwebCardEditor);
+
+const STYLE = `
+  :host { --sw-track: #D9D9D9; }
+  ha-card {
+    padding: var(--sw-pad, 22px) 20px calc(var(--sw-pad, 22px) + 2px);
+    border-radius: var(--ha-card-border-radius, 16px);
+    color: var(--primary-text-color);
+  }
+  .head { display:flex; align-items:center; justify-content:space-between; cursor:pointer; margin-bottom:var(--sw-head, 18px); }
+  .title { font-size:var(--sw-title, 20px); font-weight:700; letter-spacing:-0.2px; }
+  .head ha-icon { --mdc-icon-size:24px; color:var(--primary-text-color); opacity:.8; }
+  .row { display:flex; align-items:baseline; justify-content:space-between; margin:6px 0 var(--sw-rowmb, 14px); }
+  .label { font-size:var(--sw-label, 18px); color:var(--primary-text-color); opacity:.85; }
+  .big { font-size:var(--sw-big, 30px); font-weight:700; letter-spacing:-0.5px; }
+  .unit { font-size:18px; margin-left:5px; opacity:.85; }
+  .bar { display:flex; gap:3px; height:7px; border-radius:4px; overflow:hidden; margin-bottom:var(--sw-barmb, 16px); }
+  .bar span { display:block; min-width:4px; border-radius:2px; }
+  .foot { display:flex; justify-content:space-between; font-size:var(--sw-foot, 16px); color:var(--secondary-text-color); gap:12px; }
+  .split { display:flex; justify-content:space-between; margin-top:4px; }
+  .split .r { text-align:right; }
+  .sub { font-size:var(--sw-sub, 17px); color:var(--secondary-text-color); margin-top:2px; }
+  .fc { display:flex; align-items:center; gap:14px; margin:-4px 0 18px; }
+  .fc ha-icon { color:#5AA9D6; --mdc-icon-size:26px; }
+  .fc .bar { flex:1; margin:0; }
+  .dev {
+    display:flex; align-items:center; gap:16px; cursor:pointer;
+    border:var(--sw-border, 1px solid var(--divider-color, #E0E0E0)); border-radius:12px;
+    padding:var(--sw-py, 12px) 18px var(--sw-py, 12px) 12px; margin-top:var(--sw-gap, 10px);
+  }
+  .ic {
+    width:var(--sw-icon, 52px); height:var(--sw-icon, 52px); border-radius:8px; flex:none;
+    --mdc-icon-size: calc(var(--sw-icon, 52px) * 0.46); display:flex; align-items:center; justify-content:center;
+    background: color-mix(in srgb, var(--c) 22%, transparent); color: var(--c);
+  }
+  .name { flex:1; font-size:var(--sw-name, 18px); }
+  .name small { display:block; font-size:calc(var(--sw-name, 18px) * 0.8); color:var(--secondary-text-color); margin-top:1px; }
+  .step { display:flex; align-items:center; gap:2px; background:var(--secondary-background-color, #F0F0F0); border-radius:10px; padding:2px; }
+  .step button { border:0; background:none; font:inherit; font-size:calc(var(--sw-val, 26px) * 0.9); line-height:1; cursor:pointer;
+    color:var(--primary-text-color); width:calc(var(--sw-icon, 52px) * 0.85); height:calc(var(--sw-icon, 52px) * 0.85); border-radius:8px; }
+  .step button:hover { background:rgba(0,0,0,.06); }
+  .step.off button { opacity:.25; cursor:default; }
+  .seg { display:flex; gap:2px; background:var(--secondary-background-color, #F0F0F0); border-radius:10px; padding:3px; margin-top:var(--sw-gap, 10px); }
+  .seg button { flex:1; border:0; background:none; font:inherit; font-size:calc(var(--sw-name, 18px) * 0.85); padding:6px 4px; border-radius:8px;
+    cursor:pointer; color:var(--secondary-text-color); white-space:nowrap; }
+  .seg button.on { background:var(--card-background-color, #fff); color:var(--primary-text-color); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  .seg.off button { cursor:default; }
+  .seg.off button:not(.on) { opacity:.5; }
+  .tms { display:flex; align-items:center; gap:6px; }
+  .tms .dash { color:var(--secondary-text-color); }
+  .tms { gap:6px; }
+  .dev .name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .step.zt { background:color-mix(in srgb, var(--c) 14%, transparent); }
+  .step.zt b { color:var(--c); min-width:52px; }
+  .step.zt button { width:calc(var(--sw-icon, 52px) * 0.7); }
+  .tm { font:inherit; font-size:var(--sw-name, 18px); font-weight:600; border:0; border-radius:8px; padding:4px 8px; cursor:pointer;
+    background:color-mix(in srgb, var(--c) 16%, transparent); color:var(--c); color-scheme:light dark; }
+  .tm:disabled { opacity:1; cursor:default; color:var(--c); -webkit-text-fill-color:var(--c); }
+  .tm::-webkit-calendar-picker-indicator { display:none; }
+  .tm[data-date]:not(:disabled)::-webkit-calendar-picker-indicator { display:block; cursor:pointer; opacity:.7; margin-left:6px; }
+  .tm[data-date]:not(:disabled) { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent); }
+  .sel { appearance:none; -webkit-appearance:none; font:inherit; font-size:var(--sw-name, 18px); font-weight:600; border:0; border-radius:8px;
+    padding:4px 12px; cursor:pointer; background:color-mix(in srgb, var(--c) 16%, transparent); color:var(--c); text-align:center; }
+  .sel:disabled { opacity:1; cursor:default; color:var(--c); }
+  .sel option { color:var(--primary-text-color); background:var(--card-background-color, #fff); }
+  .step.off button:hover { background:none; }
+  .lock { display:flex; align-items:center; gap:6px; font:inherit; font-size:var(--sw-label, 18px); cursor:pointer;
+    color:var(--primary-text-color); background:none; border:1px solid var(--divider-color, #DDD); border-radius:20px; padding:4px 12px 4px 8px;
+    --mdc-icon-size:18px; }
+  .step b { min-width:72px; text-align:center; font-size:var(--sw-name, 18px); font-weight:600; }
+  .tog { display:block; width:42px; height:24px; border-radius:12px; background:#C8C8C8; position:relative; cursor:pointer; transition:background .2s; flex:none; }
+  .tog::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .2s; }
+  .tog.on { background:var(--primary-color, #E2001A); }
+  .tog.on::after { left:21px; }
+  .val .big { font-size:var(--sw-val, 26px); }
+  .txt { font-size:var(--sw-name, 18px); font-weight:600; }
+  .txt.na { font-size:15px; font-weight:400; color:var(--secondary-text-color); }
+  .head.dense { align-items:baseline; }
+  .mini { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; font-size:var(--sw-label, 18px); color:var(--secondary-text-color); }
+  .title .note { font-size:var(--sw-label, 18px); font-weight:400; color:var(--secondary-text-color); margin-left:10px; letter-spacing:0; }
+  .mini b { color:var(--primary-text-color); font-weight:700; }
+  .mini i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; }
+  .foot.top { margin-top:var(--sw-ftop, 16px); padding-top:calc(var(--sw-ftop, 16px) - 2px); border-top:1px solid var(--divider-color, #E0E0E0); align-items:baseline; }
+  .foot.top span:last-child { font-size:22px; font-weight:700; color:var(--primary-text-color); }
+  .head.ov { justify-content:flex-start; gap:10px; margin-bottom:var(--sw-head, 20px); }
+  .head.ov .title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .head.ov .when { flex:none; font-size:var(--sw-label, 18px); color:var(--secondary-text-color); }
+  .logo { flex:none; margin-left:auto; width:30px; height:30px; border-radius:50%; background:#E2001A; color:#fff;
+    display:flex; align-items:center; justify-content:center; --mdc-icon-size:18px; object-fit:cover; }
+  .tiles { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; }
+  .tile { display:flex; flex-direction:column; justify-content:center; gap:1px; padding-left:8px; cursor:pointer;
+    border-left:4px solid var(--c); border-radius:2px; min-height:40px; min-width:0; }
+  .tile.hatch { border-left-color:transparent; border-image: repeating-linear-gradient(135deg, var(--c) 0 3px, transparent 3px 5px) 1; }
+  .tile .lbl { font-size:13px; color:var(--secondary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .tv { font-size:12px; color:var(--primary-text-color); white-space:nowrap; }
+  .tile .tv b { font-size:19px; font-weight:700; letter-spacing:-0.3px; }
+  .tile .tv small { font-size:12px; margin-left:3px; }
+  .tile .lbl .s { display:none; }
+  /* nur Touch-Geräte (iPhone/iPad): weniger Rand, bei schmalen Feldern Kurzname, kWh klein daneben.
+     Am Mac (Maus) bleibt die normale Beschriftung. */
+  .tile { container-type:inline-size; }
+  /* Wärme-Karten (dichtes Layout) enger: weniger Rand, kleinere Summe, schmaler Balken */
+  ha-card.v-waerme { padding-top:11px; padding-bottom:11px; }
+  .v-waerme .head.dense { margin-bottom:7px; }
+  .v-waerme .title { font-size:16px; }
+  .v-waerme .title .note { font-size:14px; margin-left:8px; }
+  .v-waerme .head.dense .big { font-size:21px; }
+  .v-waerme .head.dense .unit { font-size:14px; margin-left:3px; }
+  .v-waerme .bar { height:5px; gap:2px; margin-bottom:7px; }
+  .v-waerme .mini { font-size:14px; }
+  .v-waerme .mini i { width:8px; height:8px; margin-right:5px; }
+  /* Wärme-Karten als Kachelzeile: erste Spalte = Name */
+  .tiles.wt { grid-template-columns: minmax(0, 1.3fr) repeat(4, minmax(0, 1fr)); }
+  .tile.ttl { border-left:0; padding-left:0; cursor:default; }
+  .tile.ttl .tv b { font-size:16px; overflow:hidden; text-overflow:ellipsis; display:block; }
+  @media (pointer: coarse) {
+    ha-card.v-uebersicht, ha-card.v-waerme { padding-left:10px; padding-right:10px; }
+    .tiles { gap:6px; }
+    .tile { padding-left:6px; border-left-width:3px; }
+    @container (max-width: 72px) {
+      .tile .lbl { font-size:12px; }
+      .tile .lbl .l { display:none; }
+      .tile .lbl .s { display:inline; }
+      .tile .tv b { font-size:16px; letter-spacing:-0.5px; }
+      .tile .tv small { font-size:9px; margin-left:2px; }
+    }
+  }
+  .upd { margin-top:10px; font-size:13px; color:var(--secondary-text-color); }
+  @media (prefers-color-scheme: dark) { :host { --sw-track: #3A4450; } }
+`;
+
+customElements.define("solarweb-card", SolarwebCard);
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "solarweb-card",
+  name: "Solar.web Karte",
+  description: "Erzeugung, Verbrauch, Netz, Zuhause und Prognose im Fronius-Solar.web-Stil",
+});
+
+/* =====================================================================
+ * solarweb-chart – Diagramm wie in Solar.web
+ * mode: energie (Produktion/Verbrauch) · mppt (Ost/West) · wallbox
+ * TAG (Kurven) / MONAT / JAHR / GESAMT (Balken)
+ * Daten: importierte Solar.web-Statistik (solarweb:*), danach HA-Live-Daten.
+ * ===================================================================== */
+
+const CH = {
+  direct: "#F7D35C", battery: "#8FD07F", grid: "#9B9B9B", cons: "#6AAFD3",
+  soc: "#2E9E2E", pv: "#F2B200", imp: "#7A7A7A", ost: "#F7D35C", west: "#F57C00", sum: "#6AAFD3",
+  wb: "#94539F", wbGrid: "#C39BD3", // Wallbox-Anteil in Monat / Jahr / Gesamt
+  ostAm: "#E5AD00", ostPm: "#F7D980", westAm: "#EE8A2E", westPm: "#A84500", // Ost/West je Tageszeit (West nachmittags dunkel)
+};
+// Farben je Diagramm, änderbar über  colors:  (YAML, Hex in Anführungszeichen) oder den Farbwähler im Karten-Editor
+const COLOR_KEYS = {
+  energie: ["direct", "battery", "grid", "cons", "imp", "pv", "soc", "wb", "wbGrid"],
+  mppt: ["ost", "west", "sum"],
+  ostwest: ["ostAm", "ostPm", "westAm", "westPm"],
+  wallbox: ["direct", "battery", "grid"],
+};
+const COLOR_NAMES = {
+  direct: "Direkt verbraucht / aus PV", battery: "Batterie", grid: "Netz", cons: "Verbrauch (Linie)",
+  imp: "Netzbezug (Linie)", pv: "Produktion (Linie)", soc: "Ladezustand", ost: "Ost", west: "West", sum: "Summe",
+  wb: "Wallbox aus PV / Batterie", wbGrid: "Wallbox aus dem Netz",
+  ostAm: "Ost 5–15 Uhr", ostPm: "Ost 15–22 Uhr", westAm: "West 5–15 Uhr", westPm: "West 15–22 Uhr",
+};
+const toHex = (v) => (Array.isArray(v) ? "#" + v.map((x) => Math.round(x).toString(16).padStart(2, "0")).join("").toUpperCase() : v);
+const toRgb = (h) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ""));
+  if (!m) return undefined;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const DAY = 86400e3;
+const FC_COLOR = "#F2C200"; // Schraffur Energieprognose
+const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+const PERIODS = [["tag", "TAG"], ["monat", "MONAT"], ["jahr", "JAHR"], ["gesamt", "GESAMT"]];
+
+// Darstellung je Variante: gestapelte Flächen/Balken (unten → oben) und Linien
+const mkModes = (CH) => ({
+  energie: {
+    tabs: [["produktion", "PRODUKTION"], ["verbrauch", "VERBRAUCH"]],
+    views: {
+      produktion: {
+        stack: [["direct", CH.direct, "Direkt verbraucht"], ["toBatt", CH.battery, "Leistung zur Batterie"], ["toGrid", CH.grid, "Leistung ins Netz"]],
+        lines: [["cons", CH.cons, "Verbrauch"], ["fromGrid", CH.imp, "Netzbezug", "dash"]],
+        neg: ["fromGrid", CH.grid, "Netzbezug"], // Balken: unter der Null-Linie
+        // Monat / Jahr / Gesamt: Wallbox-Anteil eingefärbt
+        barStack: [["direct_x", CH.direct, "Direkt verbraucht"], ["wbPv", CH.wb, "Wallbox aus PV"], ["toBatt", CH.battery, "Leistung zur Batterie"], ["toGrid", CH.grid, "Leistung ins Netz"]],
+        barNeg: [["fromGrid_x", CH.grid, "Netzbezug"], ["wbGrid", CH.wbGrid, "Wallbox aus dem Netz"]],
+      },
+      verbrauch: {
+        stack: [["fromPv", CH.direct, "Direkt aus PV"], ["fromBatt", CH.battery, "Aus der Batterie"], ["fromGrid", CH.grid, "Aus dem Netz"]],
+        lines: [["pv", CH.pv, "Produktion"]],
+        neg: ["fromGrid", CH.grid, "Aus dem Netz"],
+        barStack: [["fromPv_x", CH.direct, "Direkt aus PV"], ["fromBatt_x", CH.battery, "Aus der Batterie"], ["wbPos", CH.wb, "Wallbox aus PV / Batterie"]],
+        barNeg: [["fromGrid_x", CH.grid, "Aus dem Netz"], ["wbGrid", CH.wbGrid, "Wallbox aus dem Netz"]],
+      },
+    },
+    soc: true,
+    wbKeys: ["wbPv", "wbBatt", "wbGrid"],
+    ha: ["pv", "consumption", "grid_import", "grid_export", "battery_charge", "battery_discharge", "soc", "wallbox"],
+    sw: { pv: "pv", cons: "consumption", direct: "direct", toBatt: "battery_in", toGrid: "grid_export",
+          fromPv: "direct", fromBatt: "battery_out", fromGrid: "grid_import",
+          wbPv: "wallbox_pv", wbBatt: "wallbox_battery", wbGrid: "wallbox_grid" },
+  },
+  mppt: {
+    title: "OST / WEST",
+    parts: true,
+    overlay: true, // Ost und West jeweils ab 0, nicht gestapelt
+    sumLine: ["Summe", CH.sum], // nur in der Tagesansicht, blau
+    linesOnly: true, // Tagesansicht: nur Linien, keine Flächen
+    sunAxis: true, // Tagesansicht nur von Sonnenaufgang bis -untergang
+    views: { main: { stack: [["mpp1", CH.ost, "Ost (MPP1)"], ["mpp2", CH.west, "West (MPP2)"]], lines: [] } },
+    ha: ["mppt1", "mppt2"],
+    sw: { mpp1: "mpp1", mpp2: "mpp2" },
+  },
+  // Ost/West-Ertrag je Tag (Monat) bzw. Monat (Jahr), getrennt nach 5–15 und 15–22 Uhr
+  ostwest: {
+    title: "OST / WEST JE TAG",
+    periods: ["monat", "jahr"],
+    split: { am: [5, 15], pm: [15, 22] }, // Fenster in Stunden [von, bis), Bruchteile möglich (14.5 = 14:30)
+    flat: true, // alle 4 Werte als einzelne Balken nebeneinander (false = je Seite gestapelt)
+    groups: [
+      ["Ost", [["o_am", CH.ostAm, "Ost 5–15 Uhr"], ["o_pm", CH.ostPm, "Ost 15–22 Uhr"]]],
+      ["West", [["w_am", CH.westAm, "West 5–15 Uhr"], ["w_pm", CH.westPm, "West 15–22 Uhr"]]],
+    ],
+    // Reihenfolge der Balken/Legende: Ost, West (5–15) | Ost, West (15–22)
+    views: { main: { stack: [["o_am", CH.ostAm, "Ost 5–15 Uhr"], ["w_am", CH.westAm, "West 5–15 Uhr"], ["o_pm", CH.ostPm, "Ost 15–22 Uhr"], ["w_pm", CH.westPm, "West 15–22 Uhr"]], lines: [] } },
+    ha: ["mppt1", "mppt2"],
+    sw: { mpp1: "mpp1", mpp2: "mpp2" },
+  },
+  wallbox: {
+    title: "WALLBOX",
+    parts: true,
+    short: { wbPv: "PV", wbBatt: "Batterie", wbGrid: "Netz" },
+    views: { main: { stack: [["wbPv", CH.direct, "Aus PV"], ["wbBatt", CH.battery, "Aus der Batterie"], ["wbGrid", CH.grid, "Aus dem Netz"]], lines: [] } },
+    ha: ["wallbox", "pv", "consumption", "grid_import", "grid_export", "battery_charge", "battery_discharge"],
+    sw: { wbPv: "wallbox_pv", wbBatt: "wallbox_battery", wbGrid: "wallbox_grid" },
+  },
+});
+const MODES = mkModes(CH);
+
+// monotone Kurve (wie d3.curveMonotoneX), überschießt nicht unter 0
+function tangents(p) {
+  const n = p.length, t = new Array(n).fill(0);
+  if (n < 2) return t;
+  const s = [];
+  for (let i = 0; i < n - 1; i++) s[i] = (p[i + 1][1] - p[i][1]) / (p[i + 1][0] - p[i][0] || 1);
+  t[0] = s[0];
+  t[n - 1] = s[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    const h0 = p[i][0] - p[i - 1][0], h1 = p[i + 1][0] - p[i][0];
+    const pp = (s[i - 1] * h1 + s[i] * h0) / (h0 + h1 || 1);
+    t[i] = (Math.sign(s[i - 1]) + Math.sign(s[i])) * Math.min(Math.abs(s[i - 1]), Math.abs(s[i]), 0.5 * Math.abs(pp)) || 0;
+  }
+  return t;
+}
+function curve(p, reverse = false) {
+  const t = tangents(p);
+  let d = "";
+  if (!reverse) {
+    for (let i = 0; i < p.length - 1; i++) {
+      const [x0, y0] = p[i], [x1, y1] = p[i + 1], h = (x1 - x0) / 3;
+      d += `C${x0 + h},${y0 + h * t[i]},${x1 - h},${y1 - h * t[i + 1]},${x1},${y1}`;
+    }
+  } else {
+    for (let i = p.length - 1; i > 0; i--) {
+      const [x0, y0] = p[i - 1], [x1, y1] = p[i], h = (x1 - x0) / 3;
+      d += `C${x1 - h},${y1 - h * t[i]},${x0 + h},${y0 + h * t[i - 1]},${x0},${y0}`;
+    }
+  }
+  return d;
+}
+
+// HA-Leistungswerte (W) → Felder der Variante
+function fromHA(mode, r) {
+  const pos = (v) => Math.max(v || 0, 0);
+  const pv = pos(r.pv), cons = pos(r.consumption);
+  const toGrid = Math.min(pos(r.grid_export), pv);
+  const toBatt = Math.min(pos(r.battery_charge), pv - toGrid);
+  const direct = pv - toGrid - toBatt;
+  const fromPv = Math.min(direct, cons);
+  const fromBatt = Math.min(pos(r.battery_discharge), cons - fromPv);
+  const fromGrid = Math.max(cons - fromPv - fromBatt, 0);
+  if (mode === "mppt") return { mpp1: pos(r.mppt1), mpp2: pos(r.mppt2) };
+  // Wallbox anteilig wie der Hausverbrauch (PV / Batterie / Netz)
+  const w = pos(r.wallbox), c = fromPv + fromBatt + fromGrid;
+  const wb = !c ? { wbPv: 0, wbBatt: 0, wbGrid: w } : { wbPv: (w * fromPv) / c, wbBatt: (w * fromBatt) / c, wbGrid: (w * fromGrid) / c };
+  if (mode === "wallbox") return wb;
+  return { pv, cons, toGrid, toBatt, direct, fromPv, fromBatt, fromGrid, soc: r.soc, ...wb };
+}
+
+// Wallbox aus den Haus-Anteilen herausrechnen (für die eingefärbten Balken)
+function wbSplit(r) {
+  const p = Math.max(r.wbPv || 0, 0), b = Math.max(r.wbBatt || 0, 0), g = Math.max(r.wbGrid || 0, 0);
+  r.wbPv = Math.min(p, r.direct || 0);
+  r.direct_x = Math.max((r.direct || 0) - r.wbPv, 0);
+  r.fromPv_x = Math.max((r.fromPv || 0) - p, 0);
+  r.fromBatt_x = Math.max((r.fromBatt || 0) - b, 0);
+  r.wbPos = Math.min(p + b, (r.fromPv || 0) + (r.fromBatt || 0));
+  r.wbGrid = Math.min(g, r.fromGrid || 0);
+  r.fromGrid_x = Math.max((r.fromGrid || 0) - r.wbGrid, 0);
+}
+
+const fmtE = (wh) =>
+  wh >= 1e4 ? `${de(wh / 1000, wh >= 1e5 ? 0 : 1)}<small>kWh</small>`
+  : `${Math.round(wh).toLocaleString("de-DE")}<small>Wh</small>`;
+const niceStep = (peak) => {
+  const raw = peak / 5, mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  return [1, 2, 2.5, 3, 5, 10].map((f) => f * mag).find((s) => s >= raw) || 10 * mag;
+};
+const ts = (x) => (typeof x === "number" ? x : Date.parse(x));
+
+class SolarwebChart extends HTMLElement {
+  setConfig(c) {
+    this._cfg = {
+      mode: "energie",
+      pv: "sensor.solarnet_pv_leistung",
+      consumption: "sensor.solarnet_leistung_verbrauch",
+      grid_import: "sensor.solarnet_leistung_netzbezug",
+      grid_export: "sensor.solarnet_leistung_netzeinspeisung",
+      battery_charge: "sensor.solarnet_ladeleistung",
+      battery_discharge: "sensor.solarnet_entladeleistung",
+      soc: "sensor.reserva_ladezustand",
+      mppt1: "sensor.mppt1_leistung",
+      mppt2: "sensor.mppt2_leistung",
+      wallbox: "sensor.wattpilot_91127865_wattpilot_charging_power",
+      solarweb_import: "solarweb",
+      // Forecast.Solar: Prognose morgen (Ost + West), als schraffierter Balken in der Monatsansicht
+      forecast_tomorrow: ["sensor.energy_production_tomorrow", "sensor.energy_production_tomorrow_2"],
+      // Ost/West-Karte: Prognose je Seite (PV Ost = erster, PV West = zweiter Forecast.Solar-Eintrag)
+      forecast_parts: { mpp1: "sensor.energy_production_tomorrow", mpp2: "sensor.energy_production_tomorrow_2" },
+      height: 300,
+      ...c,
+    };
+    if (!MODES[this._cfg.mode]) throw new Error("mode: energie | mppt | wallbox");
+    const own = {};
+    Object.entries(this._cfg.colors || {}).forEach(([k, v]) => { const h = toHex(v); if (CH[k] && toRgb(h)) own[k] = h.startsWith("#") ? h : "#" + h; });
+    this._CH = { ...CH, ...own };
+    this._M = mkModes(this._CH)[this._cfg.mode];
+    this._tab = this._M.tabs ? (this._cfg.tab === "verbrauch" ? "verbrauch" : "produktion") : "main";
+    const allowed = this._M.periods || PERIODS.map(([p]) => p);
+    this._period = allowed.includes(this._cfg.period) ? this._cfg.period : allowed[0];
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    this._day = d.getTime();
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._skeleton();
+  }
+
+  set hass(h) {
+    this._hass = h;
+    const age = Date.now() - (this._loadedAt || 0);
+    if (!this._rows || (this._isCurrent() && age > (this._period === "tag" ? 5 : 30) * 60e3)) this._load();
+  }
+
+  getCardSize() { return 7; }
+  connectedCallback() { this._ro = new ResizeObserver(() => this._draw()); this._ro.observe(this); }
+  disconnectedCallback() { this._ro?.disconnect(); }
+
+  _skeleton() {
+    const M = this._M;
+    const head = M.tabs
+      ? `<div class="tabs">${M.tabs.map(([k, n]) => `<button data-tab="${k}">${n}</button>`).join('<span class="sep"></span>')}</div>`
+      : `<div class="tabs"><span class="title">${this._cfg.title || M.title}</span></div>`;
+    this.shadowRoot.innerHTML = `<style>${CHART_STYLE}</style>
+      <ha-card>
+        <div class="top">${head}<div class="total"></div></div>
+        <div class="legend"></div>
+        <div class="plot"><svg></svg><div class="tip"></div><button class="zreset" hidden>Zoom zurücksetzen</button></div>
+        <div class="bottom">
+          <button class="nav prev">‹</button><span class="date"></span><button class="nav next">›</button>
+          <span class="spacer"></span>
+          <span class="periods">${PERIODS.filter(([p]) => !M.periods || M.periods.includes(p)).map(([p, n]) => `<button data-p="${p}">${n}</button>`).join('<span class="sep"></span>')}</span>
+        </div>
+      </ha-card>`;
+    const $ = (s) => this.shadowRoot.querySelector(s);
+    this.shadowRoot.querySelectorAll(".tabs button").forEach((b) =>
+      b.addEventListener("click", () => { this._tab = b.dataset.tab; this._draw(); })
+    );
+    this.shadowRoot.querySelectorAll(".periods button").forEach((b) =>
+      b.addEventListener("click", () => {
+        if (this._period === b.dataset.p) return;
+        this._period = b.dataset.p;
+        this._zoom = null;
+        this._rows = null;
+        this._load();
+      })
+    );
+    $(".prev").addEventListener("click", () => this._shift(-1));
+    $(".next").addEventListener("click", () => this._shift(1));
+    const svg = $("svg");
+    $(".zreset").addEventListener("click", () => this._resetZoom());
+    this._bindZoom(svg);
+  }
+
+  /* Zoom im Tagesdiagramm und in Monat/Jahr (Balken, Einheit = Balken-Index):
+     Maus ziehen = Bereich wählen · Strg/Trackpad-Pinch + Rad = zoomen · horizontal scrollen = verschieben
+     Touch: zwei Finger = zoomen, ein Finger seitlich = verschieben · Doppelklick = zurücksetzen */
+  _bindZoom(svg) {
+    const P = new Map();
+    let sel = null, pinch = null, pan = null;
+    const k = () => svg.viewBox.baseVal.width / svg.getBoundingClientRect().width;
+    const pos = (cx) => (cx - svg.getBoundingClientRect().left) * k();
+    const can = () => ["tag", "monat", "jahr"].includes(this._period) && this._geo?.tOf;
+    const redraw = () => {
+      if (this._raf) return;
+      this._raf = requestAnimationFrame(() => { this._raf = 0; this._draw(); });
+    };
+    svg.addEventListener("pointerdown", (e) => {
+      if (!can()) return;
+      if (e.isPrimary) { P.clear(); pinch = pan = null; } // neue Geste: alte Finger vergessen
+      P.set(e.pointerId, e.clientX);
+      if (e.pointerType === "mouse") {
+        if (e.button === 0) { sel = { a: pos(e.clientX), b: pos(e.clientX) }; svg.setPointerCapture(e.pointerId); }
+        return;
+      }
+      if (P.size === 2) {
+        const [xa, xb] = [...P.values()], mid = pos((xa + xb) / 2);
+        pinch = { d: Math.max(Math.abs(xa - xb), 10), mid, tm: this._geo.tOf(mid), span: this._geo.span };
+        pan = null;
+      } else if (P.size === 1 && this._zoom) pan = { x: e.clientX, z: [...this._zoom], moved: false };
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (P.has(e.pointerId)) P.set(e.pointerId, e.clientX);
+      if (sel) { sel.b = pos(e.clientX); this._selRect(sel); this._hover(null); return; }
+      if (pinch && P.size === 2) {
+        const [xa, xb] = [...P.values()], g = this._geo;
+        const span = (pinch.span * pinch.d) / Math.max(Math.abs(xa - xb), 10);
+        const a = pinch.tm - ((pinch.mid - g.m.l) / g.pw) * span;
+        this._setZoom(a, a + span); this._hover(null); redraw();
+        return;
+      }
+      if (pan && P.size === 1) {
+        const dx = e.clientX - pan.x;
+        if (pan.moved || Math.abs(dx) > 6) {
+          pan.moved = true;
+          const g = this._geo, dt = -((dx * k()) / g.pw) * (pan.z[1] - pan.z[0]);
+          this._setZoom(pan.z[0] + dt, pan.z[1] + dt); this._hover(null); redraw();
+          return;
+        }
+      }
+      this._hover(e);
+    });
+    const end = (e) => {
+      P.delete(e.pointerId);
+      if (sel) {
+        const a = Math.min(sel.a, sel.b), b = Math.max(sel.a, sel.b);
+        sel = null; this._selRect(null);
+        if (b - a > 8 && this._geo?.tOf) { this._setZoom(this._geo.tOf(a), this._geo.tOf(b)); this._draw(); }
+      }
+      if (P.size < 2) pinch = null;
+      if (!P.size) pan = null;
+    };
+    svg.addEventListener("pointerup", end);
+    svg.addEventListener("pointercancel", end);
+    svg.addEventListener("pointerleave", () => { if (!sel) this._hover(null); });
+    svg.addEventListener("wheel", (e) => {
+      if (!can()) return;
+      const g = this._geo;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const x = pos(e.clientX), t = g.tOf(x), span = g.span * Math.exp(e.deltaY * 0.01);
+        const a = t - ((x - g.m.l) / g.pw) * span;
+        this._setZoom(a, a + span); redraw();
+      } else if (this._zoom && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        const dt = ((e.deltaX * k()) / g.pw) * g.span;
+        this._setZoom(this._zoom[0] + dt, this._zoom[1] + dt); redraw();
+      }
+    }, { passive: false });
+    svg.addEventListener("dblclick", () => this._resetZoom());
+  }
+
+  _setZoom(a, b) {
+    const [f0, f1] = this._full || [this._day, this._day + DAY];
+    const tag = this._period === "tag";
+    // kleinster Ausschnitt: 1 Stunde bzw. 3 Balken
+    const span = Math.min(Math.max(b - a, tag ? 3600e3 : 3), f1 - f0);
+    if (span >= f1 - f0 - (tag ? 60e3 : 0.05)) { this._zoom = null; return; }
+    a = Math.min(Math.max(a, f0), f1 - span);
+    this._zoom = [a, a + span];
+  }
+  _resetZoom() { if (this._zoom) { this._zoom = null; this._draw(); } }
+  _selRect(s) {
+    const el = this.shadowRoot.querySelector(".sel");
+    if (!el) return;
+    if (!s) return el.setAttribute("width", 0);
+    el.setAttribute("x", Math.min(s.a, s.b));
+    el.setAttribute("width", Math.abs(s.a - s.b));
+  }
+
+  _range() {
+    const a = new Date(this._day);
+    if (this._period === "tag") return [a, new Date(a.getFullYear(), a.getMonth(), a.getDate() + 1)];
+    if (this._period === "monat") return [new Date(a.getFullYear(), a.getMonth(), 1), new Date(a.getFullYear(), a.getMonth() + 1, 1)];
+    if (this._period === "jahr") return [new Date(a.getFullYear(), 0, 1), new Date(a.getFullYear() + 1, 0, 1)];
+    return [new Date(2000, 0, 1), new Date(new Date().getFullYear() + 1, 0, 1)];
+  }
+  _isCurrent() { const [s, e] = this._range(); return Date.now() >= s && Date.now() < e; }
+
+  _shift(n) {
+    if (this._period === "gesamt") return;
+    const d = new Date(this._day);
+    if (this._period === "tag") d.setDate(d.getDate() + n);
+    if (this._period === "monat") { d.setDate(1); d.setMonth(d.getMonth() + n); }
+    if (this._period === "jahr") { d.setMonth(0, 1); d.setFullYear(d.getFullYear() + n); }
+    if (d.getTime() > Date.now()) return;
+    this._day = d.getTime();
+    this._zoom = null;
+    this._rows = null;
+    this._load();
+  }
+
+  _stats(start, end, period, ids, types, units) {
+    return this._hass.callWS({
+      type: "recorder/statistics_during_period",
+      start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString(),
+      period, statistic_ids: ids, types, ...(units ? { units } : {}),
+    }).catch(() => ({}));
+  }
+
+  // HA-Mittelwerte zusammenführen: [{t, h, <key>: W}]
+  _mergeHA(r) {
+    const c = this._cfg, by = new Map();
+    this._M.ha.forEach((k) => (r[c[k]] || []).forEach((p) => {
+      const t = ts(p.start);
+      if (!by.has(t)) by.set(t, { t, h: (ts(p.end) - t) / 3600e3 });
+      by.get(t)[k] = p.mean;
+    }));
+    return [...by.values()].sort((a, b) => a.t - b.t);
+  }
+
+  // Solar.web-Import zusammenführen: Map(t → {<feld>: Wh})
+  _mergeSW(r) {
+    const P = this._cfg.solarweb_import, by = new Map();
+    Object.entries(this._M.sw).forEach(([k, s]) => (r[`${P}:${s}`] || []).forEach((p) => {
+      if (p.change == null) return;
+      const t = ts(p.start);
+      if (!by.has(t)) by.set(t, { t, end: ts(p.end) });
+      by.get(t)[k] = Math.max(p.change, 0);
+    }));
+    return by;
+  }
+
+  async _load() {
+    if (!this._hass || this._loading) return;
+    this._loading = true;
+    this._loadedAt = Date.now();
+    this._err = null;
+    const c = this._cfg, M = this._M, mode = c.mode, P = c.solarweb_import;
+    const haIds = M.ha.map((k) => c[k]).filter(Boolean);
+    const swIds = P ? [...new Set(Object.values(M.sw))].map((s) => `${P}:${s}`) : [];
+    const [start, end] = this._range();
+    try {
+      if (M.split) {
+        this._rows = await this._loadSplit(start, end);
+        this._src = null;
+      } else if (this._period === "tag") {
+        // Tag vollständig im Solar.web-Import? Dann Stundenwerte von dort (Wh pro h = mittlere W)
+        let rows = null;
+        if (P) {
+          const sw = this._mergeSW(await this._stats(start, end, "hour", swIds, ["change"], { energy: "Wh" }));
+          const last = Math.max(0, ...[...sw.values()].map((x) => x.end));
+          if (sw.size && last >= end.getTime()) {
+            let soc = {};
+            if (M.soc) soc = await this._stats(start, end, "hour", [`${P}:soc`], ["mean"]);
+            const socBy = new Map((soc[`${P}:soc`] || []).map((p) => [ts(p.start), p.mean]));
+            rows = [...sw.values()].sort((a, b) => a.t - b.t).map((x) => {
+              const r = { t: x.t + 1800e3 };
+              Object.keys(M.sw).forEach((k) => (r[k] = x[k] || 0));
+              if (M.soc) r.soc = socBy.get(x.t);
+              return r;
+            });
+            this._step = 60;
+            this._src = "Solar.web";
+          }
+        }
+        if (!rows) {
+          let r = await this._stats(start, end, "5minute", haIds, ["mean"]);
+          this._step = 5;
+          if (!(r[haIds[0]] || []).length) { r = await this._stats(start, end, "hour", haIds, ["mean"]); this._step = 60; }
+          rows = this._mergeHA(r).map((x) => ({ t: x.t + (x.h * 3600e3) / 2, ...fromHA(mode, x) }));
+          this._src = "Home Assistant";
+        }
+        this._rows = rows;
+      } else {
+        const bucket = (t) => {
+          const d = new Date(t);
+          if (this._period === "monat") return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+          if (this._period === "jahr") return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+          return new Date(d.getFullYear(), 0, 1).getTime();
+        };
+        const keys = new Set([...Object.values(M.views).flatMap((v) => [...v.stack, ...v.lines].map(([k]) => k)), ...(M.wbKeys || [])]);
+        const by = new Map();
+        const add = (t, k, v) => {
+          const b = bucket(t);
+          if (!by.has(b)) by.set(b, Object.fromEntries([["t", b], ...[...keys].map((x) => [x, 0])]));
+          if (keys.has(k)) by.get(b)[k] += v;
+        };
+        // 1) Solar.web-Import
+        let importEnd = start.getTime();
+        if (P) {
+          const res = { monat: "day", jahr: "month", gesamt: "month" }[this._period];
+          const sw = this._mergeSW(await this._stats(start, end, res, swIds, ["change"], { energy: "Wh" }));
+          sw.forEach((x) => Object.keys(M.sw).forEach((k) => x[k] != null && add(x.t, k, x[k])));
+          const first = `${P}:${Object.values(M.sw)[0]}`;
+          const lastBig = Math.max(0, ...[...sw.values()].map((x) => x.end));
+          if (lastBig > start.getTime()) {
+            const hr = await this._stats(lastBig - 32 * DAY, Math.min(lastBig, end.getTime()), "hour", [first], ["change"]);
+            const hrs = (hr[first] || []).filter((p) => p.change != null);
+            importEnd = hrs.length ? ts(hrs[hrs.length - 1].end) : lastBig;
+          }
+          this._importEnd = importEnd > start.getTime() ? importEnd : null;
+        }
+        // 2) danach HA-Live-Daten (Stundenmittel × 1 h)
+        if (importEnd < end.getTime()) {
+          const r = await this._stats(importEnd, end, "hour", haIds.filter((id) => id !== c.soc), ["mean"]);
+          this._mergeHA(r).forEach((x) => {
+            if (x.t < importEnd) return;
+            const f = fromHA(mode, x);
+            Object.entries(f).forEach(([k, v]) => k !== "soc" && add(x.t, k, (v || 0) * x.h));
+          });
+        }
+        this._rows = [...by.values()].sort((a, b) => a.t - b.t);
+        if (M.wbKeys) this._rows.forEach(wbSplit);
+        this._src = null;
+      }
+    } catch (e) {
+      this._rows = [];
+      this._err = e.message;
+    }
+    this._loading = false;
+    this._draw();
+  }
+
+  // Ost/West laden und je Tag (Monat) bzw. Monat (Jahr) auf die Zeitfenster (M.split, z. B. 5–15 / 15–22) aufteilen.
+  // Quellen, beste zuerst: HA-5-Minuten-Mittel (ca. letzte 10 Tage, exakt) → Solar.web-Import (Stunde, Wh)
+  // → HA-Stundenmittel. Stundenwerte werden anteilig verteilt (z. B. bei 14:30 die Stunde 14–15 je zur Hälfte).
+  async _loadSplit(start, end) {
+    const c = this._cfg, M = this._M, P = c.solarweb_import, ids = [c.mppt1, c.mppt2].filter(Boolean);
+    const samples = []; // { t, dur (ms), o: Wh, w: Wh }
+    const hourOf = (t) => Math.floor(t / 3600e3) * 3600e3;
+    // 1) Solar.web-Import (Stunde) hat Vorrang – HA-Werte am Anfang können Nullen sein (Sensor noch nicht aktiv)
+    const imp = new Set();
+    if (P) {
+      const sw = this._mergeSW(await this._stats(start, end, "hour", [`${P}:mpp1`, `${P}:mpp2`], ["change"], { energy: "Wh" }));
+      sw.forEach((x) => { imp.add(x.t); samples.push({ t: x.t, dur: 3600e3, o: x.mpp1 || 0, w: x.mpp2 || 0 }); });
+    }
+    // 2) HA-5-Minuten-Mittel für Stunden ohne Import (genau, nur ca. letzte 10 Tage vorhanden)
+    const fine = new Set();
+    const r5 = await this._stats(start, end, "5minute", ids, ["mean"]);
+    this._mergeHA(r5).forEach((x) => {
+      if (imp.has(hourOf(x.t))) return;
+      samples.push({ t: x.t, dur: x.h * 3600e3, o: Math.max(x.mppt1 || 0, 0) * x.h, w: Math.max(x.mppt2 || 0, 0) * x.h });
+      fine.add(hourOf(x.t));
+    });
+    // 3) HA-Stundenmittel für den Rest
+    const r = await this._stats(start, end, "hour", ids, ["mean"]);
+    this._mergeHA(r).forEach((x) => {
+      if (imp.has(x.t) || fine.has(x.t)) return;
+      samples.push({ t: x.t, dur: x.h * 3600e3, o: Math.max(x.mppt1 || 0, 0) * x.h, w: Math.max(x.mppt2 || 0, 0) * x.h });
+    });
+
+    const wins = Object.entries(M.split); // [["am", [5, 14.5]], ["pm", [14.5, 22]]]
+    const by = new Map();
+    samples.forEach((s) => {
+      const d = new Date(s.t), h0 = d.getHours() + d.getMinutes() / 60, h1 = h0 + s.dur / 3600e3;
+      const b = this._period === "jahr" ? new Date(d.getFullYear(), d.getMonth(), 1).getTime()
+        : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      wins.forEach(([win, [w0, w1]]) => {
+        const part = Math.max(0, Math.min(h1, w1) - Math.max(h0, w0)) / (h1 - h0); // Anteil im Fenster
+        if (part <= 0) return;
+        if (!by.has(b)) by.set(b, { t: b, o_am: 0, o_pm: 0, w_am: 0, w_pm: 0 });
+        const row = by.get(b);
+        row["o_" + win] += s.o * part;
+        row["w_" + win] += s.w * part;
+      });
+    });
+    return [...by.values()].sort((x, y) => x.t - y.t);
+  }
+
+  _view() { return this._M.views[this._tab]; }
+  _sum(r) { return this._view().stack.reduce((s, [k]) => s + (r[k] || 0), 0); }
+
+  _label() {
+    const d = new Date(this._day);
+    if (this._period === "tag") return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+    if (this._period === "monat") return d.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+    if (this._period === "jahr") return String(d.getFullYear());
+    return "Gesamt";
+  }
+
+  _draw() {
+    const root = this.shadowRoot;
+    if (!root || !this._rows) return;
+    const $ = (s) => root.querySelector(s);
+    const bars = this._period !== "tag";
+    const V = this._view();
+    root.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === this._tab));
+    root.querySelectorAll(".periods button").forEach((b) => b.classList.toggle("on", b.dataset.p === this._period));
+
+    const wh = this._rows.reduce((s, r) => s + this._sum(r) * (bars ? 1 : this._step / 60), 0);
+    // Einzelsummen (z. B. Ost / West) links neben der Gesamtsumme
+    const parts = this._M.groups
+      ? `<span class="parts">${this._M.groups.map(([g, ks]) => {
+          const p = this._rows.reduce((s, r) => s + ks.reduce((t, [k]) => t + (r[k] || 0), 0), 0);
+          return `<span><i style="background:${ks[0][1]}"></i>${g} <b>${fmtE(p)}</b></span>`;
+        }).join("")}</span>`
+      : this._M.parts
+      ? `<span class="parts">${V.stack.map(([k, c, n]) => {
+          const p = this._rows.reduce((s, r) => s + (r[k] || 0) * (bars ? 1 : this._step / 60), 0);
+          return `<span><i style="background:${c}"></i>${this._M.short?.[k] || n.replace(/ \(.*\)/, "")} <b>${fmtE(p)}</b></span>`;
+        }).join("")}</span>`
+      : "";
+    $(".total").innerHTML = parts + `<span class="sum">${fmtE(wh)}</span>`;
+    $(".date").textContent = this._label();
+    const [, end] = this._range();
+    $(".next").disabled = this._period === "gesamt" || end.getTime() > Date.now();
+    $(".prev").disabled = this._period === "gesamt";
+
+    const negK = bars && V.neg ? V.neg[0] : null;
+    let L = [...V.stack].reverse().filter(([k]) => k !== negK).map(([, c, n]) => [n, c, !bars && this._M.linesOnly ? "ln" : "sq"]);
+    if (this._M.groups) L = V.stack.map(([, c, n]) => [n, c, "sq"]);
+    if (negK) L.push([V.neg[2], V.neg[1], "sq"]);
+    if (bars && V.barStack) L = [...V.barStack].reverse().concat(V.barNeg).map(([, c, n]) => [n, c, "sq"]);
+    if (!bars) V.lines.forEach(([, c, n, st]) => L.push([n, c, st === "dash" ? "ln dash" : "ln"]));
+    if (this._M.sumLine && !bars) L.push([this._M.sumLine[0], this._M.sumLine[1], "ln"]);
+    if (!bars && this._M.soc) L.push(["Ladezustand", this._CH.soc, "ln"]);
+    const fcL = bars && this._fc();
+    if (fcL && fcL.parts) V.stack.forEach(([k, c, n]) => L.push(["Prognose " + (this._M.short?.[k] || n.replace(/ \(.*\)/, "")), c, "sq hatch"]));
+    else if (fcL) L.push(["Energieprognose", FC_COLOR, "sq hatch"]);
+    $(".legend").innerHTML = L.map(([n, c, k]) => `<span><i class="${k}" style="--c:${c}"></i>${n}</span>`).join("")
+      + (!bars && this._src === "Solar.web" ? `<span class="src">Stundenwerte aus Solar.web</span>` : "");
+
+    // Breite der Zeichenfläche selbst messen (das Element ist inline → clientWidth wäre 0)
+    const W = Math.max(($(".plot").clientWidth || 608) - 8, 300), H = this._cfg.height;
+    const m = { l: 52, r: !bars && this._M.soc ? 38 : 16, t: 30, b: 26 };
+    const svg = $("svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("height", H);
+    svg.innerHTML = bars ? this._bars(W, H, m) : this._curves(W, H, m);
+    $(".zreset").hidden = !this._zoom;
+  }
+
+  _axisY(W, m, step, Y, unit, right) {
+    let g = "";
+    for (let i = 0; i <= 5; i++) {
+      const y = Y(step * i);
+      g += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/>`;
+      g += `<text class="ax" x="${m.l - 8}" y="${y + 4}" text-anchor="end">${(step * i).toLocaleString("de-DE", { maximumFractionDigits: 1 })}</text>`;
+      if (right) g += `<text class="ax" x="${W - m.r + 8}" y="${y + 4}">${20 * i}</text>`;
+    }
+    g += `<text class="ax unit" x="${m.l - 8}" y="${m.t - 16}" text-anchor="end">${unit}</text>`;
+    if (right) g += `<text class="ax unit" x="${W - m.r + 8}" y="${m.t - 16}">%</text>`;
+    return g;
+  }
+
+  _curves(W, H, m) {
+    const pw = W - m.l - m.r, ph = H - m.t - m.b;
+    const V = this._view();
+    // Zeitfenster: ganzer Tag, bei sunAxis nur die Stunden mit Erzeugung (±1 h)
+    let x0 = this._day, x1 = this._day + DAY;
+    if (this._M.sunAxis) {
+      const on = this._rows.filter((r) => this._sum(r) > 1);
+      if (on.length) {
+        x0 = Math.max(x0, Math.floor((on[0].t - 3600e3) / 3600e3) * 3600e3);
+        x1 = Math.min(x1, Math.ceil((on[on.length - 1].t + 3600e3) / 3600e3) * 3600e3);
+      }
+    }
+    this._full = [x0, x1];
+    if (this._zoom) {
+      if (this._zoom[0] >= x0 && this._zoom[1] <= x1) [x0, x1] = this._zoom;
+      else this._zoom = null;
+    }
+    // sichtbarer Bereich + je ein Punkt links/rechts, damit die Kurven am Rand nicht abreißen
+    const all = this._rows;
+    const rows = all.filter((r, i) => (r.t >= x0 && r.t <= x1)
+      || (r.t < x0 && all[i + 1]?.t > x0) || (r.t > x1 && all[i - 1]?.t < x1));
+    const vis = rows.filter((r) => r.t >= x0 && r.t <= x1);
+    const top = (r) => (this._M.overlay && !this._M.sumLine ? Math.max(...V.stack.map(([k]) => r[k] || 0)) : this._sum(r));
+    const peak = Math.max(100, ...rows.map((r) => Math.max(top(r), ...V.lines.map(([k]) => r[k] || 0))));
+    const step = [100, 200, 300, 500, 600, 1000, 1500, 2000, 2500, 3000, 5000, 10000].find((s) => s * 5 >= peak) || 20000;
+    const ymax = step * 5;
+    const X = (t) => m.l + ((t - x0) / (x1 - x0)) * pw;
+    const Y = (v) => m.t + ph - (v / ymax) * ph;
+    const Ys = (v) => m.t + ph - (v / 100) * ph;
+    const span = x1 - x0;
+    this._geo = {
+      X, m, pw, span,
+      tOf: (x) => x0 + ((x - m.l) / pw) * span,
+      nearest: (x) => vis.reduce((b, r) => (Math.abs(X(r.t) - x) < Math.abs(X(b.t) - x) ? r : b), vis[0]),
+    };
+
+    const gap = this._step === 60 ? 90 * 60e3 : 15 * 60e3;
+    const segs = [];
+    let cur = [];
+    rows.forEach((r, i) => {
+      if (i && r.t - rows[i - 1].t > gap) { segs.push(cur); cur = []; }
+      cur.push(r);
+    });
+    if (cur.length) segs.push(cur);
+    const area = (seg, lo, hi, col) => {
+      if (seg.length < 2) return "";
+      const top = seg.map((r) => [X(r.t), Y(hi(r))]);
+      const bot = seg.map((r) => [X(r.t), Y(lo(r))]);
+      return `<path fill="${col}" d="M${top[0]}${curve(top)}L${bot[bot.length - 1]}${curve(bot, true)}Z"/>`;
+    };
+    const line = (seg, f, col, Yf = Y, dash) => {
+      const p = seg.filter((r) => f(r) != null).map((r) => [X(r.t), Yf(f(r))]);
+      return p.length < 2 ? "" : `<path fill="none" stroke="${col}" stroke-width="${dash ? 1.5 : this._M.linesOnly ? 2.5 : 2}" ${dash ? 'stroke-dasharray="4 3"' : ""} stroke-linejoin="round" d="M${p[0]}${curve(p)}"/>`;
+    };
+
+    let g = this._axisY(W, m, step, Y, "W", this._M.soc);
+    // Achsenbeschriftung passend zum (Zoom-)Bereich: 15 min … 6 h
+    const maxT = pw < 500 ? 6 : Math.min(16, Math.floor(pw / 70));
+    const tstep = [15, 30, 60, 120, 180, 240, 360].map((v) => v * 60e3).find((s) => span / s <= maxT) || 360 * 60e3;
+    for (let t = this._day + Math.ceil((x0 - this._day + 1) / tstep) * tstep; t < x1; t += tstep) {
+      const x = X(t), d = new Date(t);
+      g += `<line class="tick" x1="${x}" x2="${x}" y1="${m.t + ph}" y2="${m.t + ph + 4}"/>`;
+      g += `<text class="ax" x="${x}" y="${H - 6}" text-anchor="middle">${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}</text>`;
+    }
+    this._uid = this._uid || Math.random().toString(36).slice(2, 8);
+    g += `<defs><clipPath id="pc${this._uid}"><rect x="${m.l}" y="0" width="${pw}" height="${H}"/></clipPath></defs><g clip-path="url(#pc${this._uid})">`;
+    segs.forEach((s) => {
+      if (this._M.overlay) {
+        // jede Reihe ab 0, deckend; erst alle Flächen, dann alle Linien (bleiben sichtbar)
+        if (!this._M.linesOnly) V.stack.forEach(([k, col]) => (g += area(s, () => 0, (r) => r[k] || 0, col)));
+        V.stack.forEach(([k, col]) => (g += line(s, (r) => r[k] || 0, col)));
+        if (this._M.sumLine) g += line(s, (r) => this._sum(r), this._M.sumLine[1]);
+        return;
+      }
+      let acc = () => 0;
+      V.stack.forEach(([k, col]) => {
+        const lo = acc, hi = ((prev) => (r) => prev(r) + (r[k] || 0))(acc);
+        g += area(s, lo, hi, col);
+        acc = hi;
+      });
+    });
+    segs.forEach((s) => {
+      V.lines.forEach(([k, col, , st]) => (g += line(s, (r) => (k === "pv" && !r.pv ? null : r[k]), col, Y, st === "dash")));
+      if (this._M.soc) g += line(s, (r) => r.soc, this._CH.soc, Ys);
+    });
+    g += `</g>`;
+    g += this._empty(W, H);
+    g += `<rect class="sel" x="-10" y="${m.t}" width="0" height="${ph}"/>`;
+    g += `<line class="cursor" y1="${m.t}" y2="${m.t + ph}" x1="-10" x2="-10"/>`;
+    return g;
+  }
+
+  _bars(W, H, m) {
+    const pw = W - m.l - m.r, ph = H - m.t - m.b;
+    const [start] = this._range();
+    const V = this._view();
+    let slots;
+    if (this._period === "monat") {
+      const n = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+      slots = Array.from({ length: n }, (_, i) => new Date(start.getFullYear(), start.getMonth(), i + 1).getTime());
+    } else if (this._period === "jahr") {
+      slots = Array.from({ length: 12 }, (_, i) => new Date(start.getFullYear(), i, 1).getTime());
+    } else {
+      const y0 = this._rows.length ? new Date(this._rows[0].t).getFullYear() : new Date().getFullYear();
+      slots = Array.from({ length: new Date().getFullYear() - y0 + 1 }, (_, i) => new Date(y0 + i, 0, 1).getTime());
+    }
+    const byT = new Map(this._rows.map((r) => [r.t, r]));
+    const ov = this._M.overlay;
+    // Netzbezug (V.neg) wird nach unten gezeichnet, der Rest gestapelt nach oben
+    const negK = V.neg ? V.neg[0] : null;
+    // mit Wallbox-Aufteilung: eigene Stapel oben / unten
+    const negList = V.barNeg || (V.neg ? [V.neg] : []);
+    const posStack = V.barStack || V.stack.filter(([k]) => k !== negK);
+    const G = this._M.groups;
+    const flat = G && this._M.flat;
+    const posVal = (r) => flat ? Math.max(...G.flatMap(([, ks]) => ks.map(([k]) => r[k] || 0)))
+      : G ? Math.max(...G.map(([, ks]) => ks.reduce((s, [k]) => s + (r[k] || 0), 0)))
+      : (ov ? Math.max(...posStack.map(([k]) => r[k] || 0)) : posStack.reduce((s, [k]) => s + (r[k] || 0), 0));
+    const fc = this._fc();
+    const posMax = Math.max(0.5, fc ? (fc.parts && ov ? Math.max(...Object.values(fc.parts)) : fc.wh) / 1000 : 0, ...this._rows.map((r) => posVal(r) / 1000));
+    const negMax = negList.length ? Math.max(0, ...this._rows.map((r) => negList.reduce((s, [k]) => s + (r[k] || 0), 0) / 1000)) : 0;
+    const step = niceStep(posMax + negMax);
+    const tp = Math.max(1, Math.ceil(posMax / step - 1e-9)), tn = negMax > 0 ? Math.ceil(negMax / step - 1e-9) : 0;
+    const range = (tp + tn) * step;
+    const Y = (v) => m.t + ((tp * step - v) / range) * ph;
+    // sichtbarer Ausschnitt in Balken-Einheiten (Zoom), ganz = [0, Anzahl]
+    const n = slots.length;
+    this._full = [0, n];
+    let x0 = 0, x1 = n;
+    if (this._zoom) {
+      if (this._zoom[0] >= 0 && this._zoom[1] <= n && this._period !== "gesamt") [x0, x1] = this._zoom;
+      else this._zoom = null;
+    }
+    const span = x1 - x0;
+    const sw = pw / span, bw = Math.max(Math.min(sw * 0.72, 56), 2);
+    const X = (i) => m.l + (i + 0.5 - x0) * sw;
+    const seen = (i) => i + 1 > x0 && i < x1;
+    this._geo = {
+      X: (t) => X(slots.indexOf(t)), m, pw, span,
+      tOf: (x) => x0 + ((x - m.l) / pw) * span,
+      nearest: (x) => {
+        const i = Math.min(Math.max(Math.floor(x0 + (x - m.l) / sw), Math.floor(x0)), Math.min(Math.ceil(x1) - 1, n - 1));
+        return byT.get(slots[i]) || (fc && slots[i] === fc.t ? { t: fc.t, fc: fc.wh, fcParts: fc.parts } : { t: slots[i], empty: true });
+      },
+    };
+    let g = "";
+    for (let i = -tn; i <= tp; i++) {
+      const y = Y(step * i);
+      g += `<line class="grid${i === 0 ? " zero" : ""}" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/>`;
+      g += `<text class="ax" x="${m.l - 8}" y="${y + 4}" text-anchor="end">${(step * i || 0).toLocaleString("de-DE", { maximumFractionDigits: 1 }).replace("-", "−")}</text>`;
+    }
+    g += `<text class="ax unit" x="${m.l - 8}" y="${m.t - 16}" text-anchor="end">kWh</text>`;
+    // Beschriftung: so dicht wie Platz da ist (beim Zoomen jeder Tag / Monat)
+    const every = Math.max(1, Math.ceil((this._period === "monat" ? 24 : this._period === "jahr" ? 34 : 40) / sw));
+    this._uid = this._uid || Math.random().toString(36).slice(2, 8);
+    g += `<defs><clipPath id="bc${this._uid}"><rect x="${m.l}" y="0" width="${pw}" height="${H}"/></clipPath><pattern id="fh${this._uid}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.4" height="6" fill="${FC_COLOR}"/></pattern>${V.stack.map(([, c], j) => `<pattern id="fh${this._uid}${j}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.4" height="6" fill="${c}"/></pattern>`).join("")}</defs>`;
+    let labels = "";
+    g += `<g clip-path="url(#bc${this._uid})">`;
+    slots.forEach((t, i) => {
+      if (!seen(i)) return;
+      const d = new Date(t);
+      const lbl = this._period === "monat" ? d.getDate() : this._period === "jahr" ? MONTHS[d.getMonth()] : d.getFullYear();
+      const show = this._period === "monat" ? (i + 1) % every === 0 || i === 0 : i % every === 0;
+      if (show && X(i) >= m.l && X(i) <= W - m.r)
+        labels += `<text class="ax" x="${X(i)}" y="${H - 6}" text-anchor="middle">${lbl}</text>`;
+      const r = byT.get(t);
+      // Prognose (morgen): schraffiert
+      if (fc && t === fc.t && !(r && this._sum(r) > 0)) {
+        const hb = (x, w, wh, pat) => `<rect x="${x}" y="${Y(wh / 1000)}" width="${w}" height="${Math.max(Y(0) - Y(wh / 1000), 0.5)}" fill="url(#${pat})"/>`;
+        g += `<g class="slot" data-t="${t}">`;
+        if (fc.parts && ov) {
+          // Ost | West nebeneinander, in der Farbe der Seite schraffiert
+          const w = bw / V.stack.length;
+          V.stack.forEach(([k], j) => { if (fc.parts[k] > 0) g += hb(X(i) - bw / 2 + j * w, Math.max(w - 1, 1), fc.parts[k], `fh${this._uid}${j}`); });
+        } else g += hb(X(i) - bw / 2, bw, fc.wh, `fh${this._uid}`);
+        g += `</g>`;
+        return;
+      }
+      if (!r) return;
+      // eckige Balken wie in Solar.web, je Zeitraum eine Gruppe (Hervorhebung beim Antippen)
+      g += `<g class="slot" data-t="${t}">`;
+      if (flat) {
+        // vier einzelne Balken nebeneinander in Stapel-Reihenfolge: Ost 5–14 | West 5–14 | Ost 14–22 | West 14–22
+        const ks = V.stack, w = bw / ks.length;
+        ks.forEach(([k, col], j) => {
+          const v = (r[k] || 0) / 1000;
+          if (v > 0) g += `<rect x="${X(i) - bw / 2 + j * w}" y="${Y(v)}" width="${Math.max(w - 0.5, 1)}" height="${Math.max(Y(0) - Y(v), 0.5)}" fill="${col}"/>`;
+        });
+        g += `</g>`;
+        return;
+      }
+      if (G) {
+        // je Gruppe (Ost | West) ein Balken nebeneinander, darin gestapelt 5–14 (unten) und 14–22 Uhr (oben)
+        const w = bw / G.length;
+        G.forEach(([, ks], j) => {
+          let acc = 0;
+          ks.forEach(([k, col]) => {
+            const v = (r[k] || 0) / 1000;
+            if (v <= 0) return;
+            g += `<rect x="${X(i) - bw / 2 + j * w}" y="${Y(acc + v)}" width="${Math.max(w - 1, 1)}" height="${Math.max(Y(acc) - Y(acc + v), 0.5)}" fill="${col}"/>`;
+            acc += v;
+          });
+        });
+        g += `</g>`;
+        return;
+      }
+      if (ov) {
+        // Balken nebeneinander (z. B. Ost | West)
+        const n = V.stack.length, w = bw / n;
+        V.stack.forEach(([k, col], j) => {
+          const v = (r[k] || 0) / 1000;
+          if (v <= 0) return;
+          g += `<rect x="${X(i) - bw / 2 + j * w}" y="${Y(v)}" width="${Math.max(w - 1, 1)}" height="${Math.max(Y(0) - Y(v), 0.5)}" fill="${col}"/>`;
+        });
+        g += `</g>`;
+        return;
+      }
+      let nacc = 0;
+      negList.forEach(([k, col]) => {
+        const v = (r[k] || 0) / 1000;
+        if (v <= 0) return;
+        g += `<rect x="${X(i) - bw / 2}" y="${Y(-nacc)}" width="${bw}" height="${Math.max(Y(-nacc - v) - Y(-nacc), 0.5)}" fill="${col}"/>`;
+        nacc += v;
+      });
+      let acc = 0;
+      posStack.forEach(([k, col]) => {
+        const v = (r[k] || 0) / 1000;
+        if (v <= 0) return;
+        const y0 = Y(acc), y1 = Y(acc + v);
+        g += `<rect x="${X(i) - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(y0 - y1, 0.5)}" fill="${col}"/>`;
+        acc += v;
+      });
+      g += `</g>`;
+    });
+    g += `</g>` + labels;
+    g += this._empty(W, H);
+    g += `<rect class="sel" x="-10" y="${m.t}" width="0" height="${ph}"/>`;
+    this._slotW = sw;
+    return g;
+  }
+
+  _empty(W, H) {
+    if (this._rows.some((r) => this._sum(r) > 0)) return "";
+    const msg = this._err ? "Fehler: " + this._err : "Keine Daten für diesen Zeitraum";
+    return `<text class="ax" x="${W / 2}" y="${H / 2}" text-anchor="middle">${msg}</text>`;
+  }
+
+  _hover(e) {
+    const tip = this.shadowRoot.querySelector(".tip");
+    const cur = this.shadowRoot.querySelector(".cursor");
+    const mark = (t) => this.shadowRoot.querySelectorAll(".slot").forEach((s) => s.classList.toggle("on", String(t) === s.dataset.t));
+    const hide = () => { tip.style.display = "none"; cur?.setAttribute("x1", -10); cur?.setAttribute("x2", -10); mark(null); };
+    if (!e || !this._rows?.length || !this._geo) return hide();
+    const svg = e.currentTarget, box = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+    const x = ((e.clientX - box.left) / box.width) * vb.width;
+    const best = this._geo.nearest(x);
+    if (!best || best.empty) return hide();
+    const cx = this._geo.X(best.t);
+    cur?.setAttribute("x1", cx); cur?.setAttribute("x2", cx);
+    const bars = this._period !== "tag";
+    if (bars) { mark(best.t); return this._barTip(best, tip, cx, box, vb); }
+    const v = bars ? (wh) => `${de(wh / 1000, wh >= 1e5 ? 0 : 2)} kWh` : (w) => `${Math.round(w).toLocaleString("de-DE")} W`;
+    const V = this._view();
+    const rows = [["Summe", v(this._sum(best)), "transparent"]];
+    [...V.stack].reverse().forEach(([k, c, n]) => rows.push([n, v(best[k] || 0), c]));
+    V.lines.forEach(([k, c, n]) => rows.push([n, v(best[k] || 0), c]));
+    if (bars && V.barStack) {
+      const C2 = this._CH;
+      [["wbPv", "Wallbox aus PV", C2.wb], ["wbBatt", "Wallbox aus Batterie", C2.wb], ["wbGrid", "Wallbox aus dem Netz", C2.wbGrid]]
+        .forEach(([k, n, c]) => (best[k] || 0) > 0 && rows.push([n, v(best[k]), c]));
+    }
+    if (!bars && best.soc != null) rows.push(["Ladezustand", `${de(best.soc, 1)} %`, this._CH.soc]);
+    const d = new Date(best.t);
+    const head = this._period === "tag"
+      ? (this._step === 60 ? `${String(d.getHours()).padStart(2, "0")}:00–${String(d.getHours() + 1).padStart(2, "0")}:00` : d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }))
+      : this._period === "monat" ? d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })
+      : this._period === "jahr" ? d.toLocaleDateString("de-DE", { month: "long", year: "numeric" })
+      : String(d.getFullYear());
+    tip.innerHTML = `<b>${head}</b>` + rows.map(([n, val, c]) => `<div><i style="background:${c}"></i>${n}<span>${val}</span></div>`).join("");
+    tip.style.display = "block";
+    const left = (cx / vb.width) * box.width;
+    tip.style.left = `${left > box.width / 2 ? left - tip.offsetWidth - 14 : left + 14}px`;
+  }
+
+  // Prognose für morgen (Summe der Forecast.Solar-Sensoren) – nur Monat, Produktion, wenn morgen im Monat liegt
+  // Ost/West (mode: mppt): je Seite eigener Sensor (forecast_parts: { mpp1: …, mpp2: … }) → parts
+  _fc() {
+    const mode = this._cfg.mode;
+    if (this._period !== "monat" || !this._hass) return null;
+    if (!(mode === "mppt" || (mode === "energie" && this._tab === "produktion"))) return null;
+    const val = (ids) => [].concat(ids || []).filter((id) => this._hass.states[id])
+      .reduce((s, id) => s + (parseFloat(this._hass.states[id].state) || 0) * 1000, 0);
+    let wh, parts = null;
+    if (mode === "mppt") {
+      parts = Object.fromEntries(Object.entries(this._cfg.forecast_parts || {}).map(([k, ids]) => [k, val(ids)]));
+      wh = Object.values(parts).reduce((s, v) => s + v, 0);
+    } else wh = val(this._cfg.forecast_tomorrow);
+    const n = new Date(), t = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1).getTime();
+    const [a, b] = this._range();
+    return wh > 0 && t >= a.getTime() && t < b.getTime() ? { t, wh, parts } : null;
+  }
+
+  // Tooltip Monat / Jahr / Gesamt im Solar.web-Stil: Datum, Anteile, Trennlinie, Summe + Quote
+  _barTip(r, tip, cx, box, vb) {
+    const V = this._view(), kv = (wh) => `${de((wh || 0) / 1000, 2)} kWh`;
+    if (r.fc != null) {
+      const fr = (n, wh, c) => `<div><i class="hatch" style="--c:${c}"></i>${n}<span>${kv(wh)}</span></div>`;
+      const lines = r.fcParts
+        ? V.stack.map(([k, c, n]) => fr("Prognose " + (this._M.short?.[k] || n.replace(/ \(.*\)/, "")), r.fcParts[k], c)).join("")
+          + `<hr><div class="s"><i></i>Summe<span>${kv(r.fc)}</span></div>`
+        : fr("Energieprognose", r.fc, FC_COLOR);
+      tip.innerHTML = `<b>${new Date(r.t).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</b>${lines}`;
+      tip.style.display = "block";
+      const l = (cx / vb.width) * box.width;
+      tip.style.left = `${l > box.width / 2 ? l - tip.offsetWidth - 14 : l + 14}px`;
+      return;
+    }
+    const d = new Date(r.t);
+    const head = this._period === "monat" ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })
+      : this._period === "jahr" ? d.toLocaleDateString("de-DE", { month: "long", year: "numeric" }) : String(d.getFullYear());
+    const pos = V.barStack || V.stack.filter(([k]) => !V.neg || k !== V.neg[0]);
+    const neg = V.barNeg || (V.neg ? [V.neg] : []);
+    const row = ([k, c, n]) => `<div><i style="background:${c}"></i>${n}<span>${kv(r[k])}</span></div>`;
+    const sumRow = (n, val) => `<div class="s"><i></i>${n}<span>${val}</span></div>`;
+    const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 100)} %` : "–");
+    if (this._M.groups) {
+      // Ost/West: je Seite 5–14, 14–22 und Summe (mit Anteil am Tag), unten Gesamt
+      const tot = this._sum(r);
+      tip.innerHTML = `<b>${head}</b>` + this._M.groups.map(([gName, ks]) => {
+        const gs = ks.reduce((s, [k]) => s + (r[k] || 0), 0);
+        return ks.map(row).join("") + sumRow(`${gName} gesamt`, `${kv(gs)} · ${pct(gs, tot)}`);
+      }).join("<hr>") + `<hr>` + sumRow("Summe", kv(tot));
+      tip.style.display = "block";
+      const l = (cx / vb.width) * box.width;
+      tip.style.left = `${l > box.width / 2 ? l - tip.offsetWidth - 14 : l + 14}px`;
+      return;
+    }
+    let foot = "";
+    if (this._tab === "produktion") {
+      const pv = r.pv || pos.reduce((s, [k]) => s + (r[k] || 0), 0);
+      foot = sumRow("Produktion", kv(pv)) + sumRow("Eigenverbrauch", pct(pv - (r.toGrid || 0), pv));
+    } else if (this._tab === "verbrauch") {
+      const cons = r.cons || [...pos, ...neg].reduce((s, [k]) => s + (r[k] || 0), 0);
+      foot = sumRow("Verbrauch", kv(cons)) + sumRow("Autarkie", pct(cons - (r.fromGrid || 0), cons));
+    } else foot = sumRow("Summe", kv(this._sum(r)));
+    tip.innerHTML = `<b>${head}</b>` + [...pos].reverse().filter(([k]) => (r[k] || 0) > 0).map(row).join("")
+      + neg.filter(([k]) => (r[k] || 0) > 0).map(row).join("") + `<hr>` + foot;
+    tip.style.display = "block";
+    const left = (cx / vb.width) * box.width;
+    tip.style.left = `${left > box.width / 2 ? left - tip.offsetWidth - 14 : left + 14}px`;
+  }
+
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("solarweb-chart-editor"); }
+}
+
+// Visueller Editor: Diagramm, Höhe und Farben (Farbwähler)
+class SolarwebChartEditor extends HTMLElement {
+  setConfig(c) { this._c = { ...c }; this._render(); }
+  set hass(h) { this._hass = h; if (this._f) this._f.hass = h; }
+  _render() {
+    const mode = MODES[this._c.mode] ? this._c.mode : "energie";
+    if (!this._f) {
+      this._f = document.createElement("ha-form");
+      this._f.computeLabel = (s) => s.label || s.name;
+      this._f.addEventListener("value-changed", (e) => this._changed(e.detail.value));
+      this.appendChild(this._f);
+    }
+    if (this._hass) this._f.hass = this._hass;
+    this._f.schema = [
+      { name: "mode", label: "Diagramm", selector: { select: { mode: "dropdown", options: [
+        { value: "energie", label: "Produktion / Verbrauch" }, { value: "mppt", label: "Ost / West" }, { value: "wallbox", label: "Wallbox" }] } } },
+      { name: "height", label: "Höhe (Pixel)", selector: { number: { min: 150, max: 700, step: 10, mode: "box" } } },
+      ...COLOR_KEYS[mode].map((k) => ({ name: "c_" + k, label: COLOR_NAMES[k], selector: { color_rgb: {} } })),
+    ];
+    const data = { mode, height: this._c.height ?? 300 };
+    COLOR_KEYS[mode].forEach((k) => (data["c_" + k] = toRgb(toHex(this._c.colors?.[k]) || CH[k])));
+    this._f.data = data;
+  }
+  _changed(v) {
+    const mode = v.mode || "energie";
+    const cfg = { ...this._c, mode, height: v.height };
+    const colors = {};
+    (COLOR_KEYS[mode] || []).forEach((k) => {
+      const h = toHex(v["c_" + k]);
+      if (h && h.toUpperCase() !== CH[k].toUpperCase()) colors[k] = h;
+    });
+    if (Object.keys(colors).length) cfg.colors = colors; else delete cfg.colors;
+    this._c = cfg;
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg }, bubbles: true, composed: true }));
+  }
+}
+customElements.define("solarweb-chart-editor", SolarwebChartEditor);
+
+const CHART_STYLE = `
+  :host { display:block; }
+  ha-card { padding: 0 0 6px; overflow: hidden; border-radius: var(--ha-card-border-radius, 16px); color: var(--primary-text-color); }
+  .top { display:flex; align-items:center; justify-content:space-between; padding: 10px 20px 0; border-bottom:1px solid var(--divider-color,#E0E0E0); }
+  .tabs, .periods { display:flex; align-items:center; }
+  .tabs button, .periods button { background:none; border:0; font-family:inherit; cursor:pointer; color: var(--secondary-text-color);
+    letter-spacing:1.5px; border-bottom:3px solid transparent; }
+  .tabs button { padding:14px 6px 12px; margin-right:14px; font-size:14px; font-weight:700; }
+  .tabs .title { padding:14px 6px 12px; font-size:14px; font-weight:700; letter-spacing:1.5px; border-bottom:3px solid var(--primary-text-color); }
+  .periods button { padding:8px 4px 6px; margin:0 8px; font-size:13px; font-weight:600; }
+  .tabs button.on, .periods button.on { color: var(--primary-text-color); border-bottom-color: var(--primary-text-color); }
+  .sep { width:1px; height:18px; background:var(--divider-color,#DDD); }
+  .tabs .sep { margin-right:14px; }
+  .total { font-size:26px; font-weight:400; letter-spacing:-0.3px; white-space:nowrap; }
+  .top { gap:12px; }
+  .total { display:flex; flex-wrap:wrap-reverse; justify-content:flex-end; align-items:baseline; gap:2px 18px; min-width:0; }
+  .total .sum { white-space:nowrap; }
+  .total small { font-size:15px; margin-left:5px; }
+  .total .parts { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px 14px; font-size:14px; color:var(--secondary-text-color); }
+  .total .parts span { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  .total .parts i { width:10px; height:10px; border-radius:2px; display:inline-block; }
+  .total .parts b { font-weight:600; color:var(--primary-text-color); font-size:16px; }
+  .total .parts small { font-size:12px; margin-left:3px; }
+  .legend { display:flex; flex-wrap:wrap; justify-content:center; gap:6px 18px; padding:14px 16px 4px; font-size:13px; }
+  .legend span { display:flex; align-items:center; gap:7px; white-space:nowrap; }
+  .legend i { display:inline-block; }
+  .legend i.sq { width:12px; height:12px; border-radius:2px; background:var(--c); }
+  .legend i.ln { width:16px; height:2px; background:var(--c); }
+  .legend i.ln.dash { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+  .legend i.sq.hatch, .tip div i.hatch { background: repeating-linear-gradient(135deg, var(--c, #F2C200) 0 2px, transparent 2px 4px); }
+  .legend .src { color: var(--secondary-text-color); font-size:12px; font-style:italic; }
+  .plot { position:relative; padding: 0 4px; }
+  svg { width:100%; display:block; touch-action: pan-y; user-select:none; -webkit-user-select:none; }
+  .sel { fill: var(--primary-text-color); opacity:.1; pointer-events:none; }
+  .zreset { position:absolute; top:0; right:14px; z-index:3; font:inherit; font-size:12px; cursor:pointer;
+    color: var(--primary-text-color); background: var(--card-background-color,#fff);
+    border:1px solid var(--divider-color,#DDD); border-radius:14px; padding:4px 12px; }
+  .zreset[hidden] { display:none; }
+  .grid { stroke: var(--divider-color,#E6E6E6); stroke-width:1; }
+  .grid.zero { stroke: var(--secondary-text-color); opacity:.55; }
+  .tick { stroke: var(--secondary-text-color); opacity:.5; }
+  .ax { font-size:11px; fill: var(--secondary-text-color); }
+  .ax.unit { font-size:12px; }
+  .cursor { stroke: var(--primary-text-color); stroke-width:1; stroke-dasharray:3 3; opacity:.6; }
+  .hl { fill: var(--primary-text-color); opacity:.05; pointer-events:none; }
+  .tip { display:none; position:absolute; top:16px; min-width:210px; pointer-events:none; z-index:2;
+    background: var(--card-background-color,#fff); border:1px solid var(--divider-color,#DDD); border-radius:10px;
+    padding:8px 10px; font-size:12.5px; box-shadow:0 4px 14px rgba(0,0,0,.12); }
+  .tip b { display:block; margin-bottom:4px; }
+  .tip div { display:flex; align-items:center; gap:7px; line-height:1.7; }
+  .tip div i { width:9px; height:9px; border-radius:2px; }
+  .tip div span { margin-left:auto; font-weight:600; padding-left:12px; }
+  .tip hr { border:0; border-top:1px solid var(--secondary-text-color); opacity:.5; margin:5px 0 4px; }
+  .tip div.s i { background:none; }
+  .slot rect { transition: filter .12s; }
+  .slot.on rect { filter: brightness(1.12) saturate(.75); }
+  .bottom { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; padding: 8px 14px 4px; border-top:1px solid var(--divider-color,#E0E0E0); margin-top:6px; }
+  .nav { background:none; border:0; font-size:28px; line-height:1; color:var(--primary-text-color); cursor:pointer; padding:0 8px; }
+  .nav:disabled { opacity:.2; cursor:default; }
+  .date { font-size:18px; font-weight:700; min-width:120px; text-align:center; }
+  .spacer { flex:1; }
+  /* Werte oben rechts kleiner – iOS vergrößert sonst und schmale Karten laufen über */
+  :host { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+  ha-card { container-type:inline-size; }
+  .total { font-size:21px; }
+  .total small { font-size:13px; }
+  .total .parts { font-size:12px; }
+  .total .parts b { font-size:14px; }
+  .total .parts small { font-size:11px; }
+  @container (max-width: 520px) {
+    .top { padding:8px 12px 0; gap:8px; }
+    .total { font-size:17px; gap:0 12px; }
+    .total small { font-size:12px; margin-left:3px; }
+    .total .parts { gap:0 10px; font-size:11px; }
+    .total .parts b { font-size:12px; }
+    .total .parts i { width:8px; height:8px; }
+    .tabs button, .tabs .title { font-size:12px; letter-spacing:1px; margin-right:8px; }
+  }
+`;
+
+customElements.define("solarweb-chart", SolarwebChart);
+window.customCards.push({
+  type: "solarweb-chart",
+  name: "Solar.web Diagramm",
+  description: "Produktion/Verbrauch, Ost/West oder Wallbox als Tag, Monat, Jahr oder Gesamt wie in Solar.web",
+});
+
+/* ───────────────────────────── solarweb-heizkurve ─────────────────────────────
+ * Heizkurve der Luxtronik als Grafik: Rücklauf-Soll und Vorlauf über Außentemperatur, echte Messpunkte
+ * der letzten Tage, Punkte „Jetzt“. Verstellen mit Vorschau: erst „Übernehmen“ schreibt in die Wärmepumpe.
+ * Kunde verstellt „Ganze Kurve“ (Standard: Fußpunkt, mit shift: correction die Korrektur) und Endpunkt (Steilheit).
+ *
+ *   - type: custom:solarweb-heizkurve
+ *     lock: true            # Regler erst nach „Gesperrt“ antippen bedienbar (Standard)
+ *     auto_lock: 60         # Sekunden bis zum erneuten Sperren
+ *     shift: foot           # „Ganze Kurve“ verstellt den Fußpunkt (foot) oder die Korrektur (correction)
+ *     default: { end: 38.5, foot: 21 }     # optional: Knopf „Grundeinstellung“ setzt diese Werte zurück
+ *     limits: { end: [30, 45], foot: [16, 26], correction: [-5, 5] }   # optional: erlaubter Bereich
+ *     days: 7               # Messpunkte der letzten n Tage
+ *     vorlauf: true         # Vorlauf-Messpunkte + Kurve (Rücklauf-Soll + mittlere Spreizung beim Heizen)
+ *     fine: true            # zusätzlich Feinwerte (Nacht, Heizgrenze; bei shift: correction auch Fußpunkt) mit Vorschau
+ *     # Entitäten (Standard = Luxtronik 350520_0351): end, foot, night, correction, threshold, outdoor, target,
+ *     #   flow_in (Vorlauf), flow_out (Rücklauf), status
+ *     # Formel aus den eigenen Messdaten ermittelt (±0,15 K bei 0…11 °C außen, Korrektur 1:1 geprüft):
+ *     #   RL-Soll = Fußpunkt + offset + (Endpunkt − 20) · (20 − T) / k + Korrektur      (Nacht: + Absenkung)
+ *     k: 36.6
+ *     offset: 2.9
+ */
+const HK_P = "luxtronik_350520_0351_";
+const HK_DEF = {
+  end: `number.${HK_P}heating_curve_end_temperature`,
+  foot: `number.${HK_P}heating_curve_parallel_shift_temperature`,
+  night: `number.${HK_P}heating_curve_night_temperature`,
+  correction: `number.${HK_P}heating_target_correction`,
+  threshold: `number.${HK_P}heating_threshold_temperature`,
+  outdoor: `sensor.${HK_P}outdoor_temperature`,
+  target: `sensor.${HK_P}flow_out_temperature_target`,
+  flow_in: `sensor.${HK_P}flow_in_temperature`,
+  flow_out: `sensor.${HK_P}flow_out_temperature`,
+  status: `sensor.${HK_P}status`,
+  shift: "foot", days: 7, day_hours: [7, 21], k: 36.6, offset: 2.9, step: 0.5, lock: true, auto_lock: 60, vorlauf: true,
+};
+
+class SolarwebHeizkurve extends HTMLElement {
+  setConfig(c) {
+    this._cfg = { ...HK_DEF, ...c };
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._p = {};
+  }
+  getCardSize() { return 8; }
+  set hass(h) {
+    this._hass = h;
+    const c = this._cfg;
+    const sig = [c.end, c.foot, c.night, c.correction, c.threshold, c.outdoor, c.target, c.flow_in, c.status]
+      .map((e) => h.states[e]?.state).join("|");
+    if (!this._pts || Date.now() - this._ptsAt > 30 * 60e3) this._load();
+    if (sig === this._sig) return;
+    this._sig = sig;
+    this._render();
+  }
+
+  _num(id) { const v = parseFloat(this._hass.states[id]?.state); return isNaN(v) ? null : v; }
+  _vals(pending = true) {
+    const c = this._cfg, p = pending ? this._p : {};
+    return {
+      end: p.end ?? this._num(c.end), foot: p.foot ?? this._num(c.foot),
+      correction: p.correction ?? this._num(c.correction) ?? 0,
+      night: p.night ?? this._num(c.night) ?? 0, thr: p.threshold ?? this._num(c.threshold) ?? 20,
+      threshold: p.threshold ?? this._num(c.threshold),
+    };
+  }
+  _rl(v, T) { const c = this._cfg; return v.foot + c.offset + (v.end - 20) * (20 - T) / c.k + v.correction; }
+
+  // Messpunkte alle 30 min (nur tagsüber, ohne Nachtabsenkung): Rücklauf-Soll immer, Vorlauf nur beim Heizen.
+  // Spreizung Vorlauf − Rücklauf = Median aller Heizzeiten (10-min-Raster)
+  async _load() {
+    this._ptsAt = Date.now();
+    this._pts = this._pts || [];
+    this._vpts = this._vpts || [];
+    const c = this._cfg, vl = c.vorlauf;
+    try {
+      const r = await this._hass.callWS({
+        type: "history/history_during_period", minimal_response: true, no_attributes: true,
+        start_time: new Date(Date.now() - c.days * 864e5).toISOString(), end_time: new Date().toISOString(),
+        entity_ids: vl ? [c.outdoor, c.target, c.flow_in, c.flow_out, c.status] : [c.outdoor, c.target],
+      });
+      const raw = (e) => (r[e] || []).map((x) => [x.lu * 1000, x.s]);
+      const ser = (e) => raw(e).map(([t, s]) => [t, parseFloat(s)]).filter((x) => !isNaN(x[1]));
+      const out = ser(c.outdoor), tgt = ser(c.target);
+      const vin = vl ? ser(c.flow_in) : [], vout = vl ? ser(c.flow_out) : [], st = vl ? raw(c.status) : [];
+      const at = (s, t) => { let v = null; for (const [ti, x] of s) { if (ti > t) break; v = x; } return v; };
+      const pts = [], vpts = [], spr = [];
+      const t0 = Date.now() - c.days * 864e5;
+      for (let t = t0; t < Date.now(); t += 10 * 60e3) {
+        const hr = new Date(t).getHours(), day = hr >= c.day_hours[0] && hr < c.day_hours[1];
+        const half = (t - t0) % (30 * 60e3) === 0;
+        const T = at(out, t);
+        if (T == null) continue;
+        if (half && day) { const y = at(tgt, t); if (y != null && y > 15) pts.push([T, y]); }
+        if (vl && at(st, t) === "heating") {
+          const a = at(vin, t), b = at(vout, t);
+          if (a != null && b != null) { spr.push(a - b); if (half && day) vpts.push([T, a]); }
+        }
+      }
+      spr.sort((a, b) => a - b);
+      this._pts = pts;
+      this._vpts = vpts;
+      this._spread = spr.length >= 10 ? spr[Math.floor(spr.length / 2)] : null;
+    } catch (e) { /* ohne Messpunkte weiter */ }
+    this._render();
+  }
+
+  _changed() { return Object.keys(this._p).length > 0; }
+
+  _svg() {
+    const cur = this._vals(false), nw = this._vals(true), c = this._cfg, sp = c.vorlauf ? this._spread : null;
+    if (cur.end == null || cur.foot == null) return `<div class="foot">Heizkurven-Werte nicht verfügbar.</div>`;
+    const changed = this._changed();
+    const W = 340, H = 210, L = 26, R = 8, T0 = 8, B = 18;
+    const tx = (T) => L + (20 - T) / 40 * (W - L - R);            // links +20 °C, rechts −20 °C
+    const ys = [cur, nw].flatMap((v) => [this._rl(v, 20), this._rl(v, -20) + (sp || 0)])
+      .concat(this._pts.map((p) => p[1]), this._vpts.map((p) => p[1]));
+    const lo = Math.floor((Math.min(...ys) - 1) / 5) * 5, hi = Math.ceil((Math.max(...ys) + 1) / 5) * 5;
+    const ty = (y) => T0 + (hi - y) / (hi - lo) * (H - T0 - B);
+    const cx = (T) => tx(Math.max(-20, Math.min(20, T))).toFixed(1);
+    const line = (v, dy, from, to) => `${tx(from).toFixed(1)},${ty(this._rl(v, from) + dy).toFixed(1)} ${tx(to).toFixed(1)},${ty(this._rl(v, to) + dy).toFixed(1)}`;
+    let g = "";
+    for (let y = lo; y <= hi; y += 5) g += `<line x1="${L}" x2="${W - R}" y1="${ty(y)}" y2="${ty(y)}" class="grid"/><text x="${L - 4}" y="${ty(y) + 3.5}" class="ax" text-anchor="end">${y}</text>`;
+    for (let T = 20; T >= -20; T -= 10) g += `<line x1="${tx(T)}" x2="${tx(T)}" y1="${T0}" y2="${H - B}" class="grid"/><text x="${tx(T)}" y="${H - B + 14}" class="ax" text-anchor="middle">${T > 0 ? "+" : ""}${T}°</text>`;
+    const vv = changed ? nw : cur, thr = Math.min(20, vv.thr);
+    // gemessener Bereich durchgezogen, darunter (kälter) nur hochgerechnet → gestrichelt
+    const all = this._pts.concat(this._vpts);
+    const tmin = all.length ? Math.max(-20, Math.min(...all.map((p) => p[0])) - 2) : -20;
+    this._tmin = tmin;
+    const curve = (v, cls, dy = 0) => {
+      const top = Math.min(20, v.thr), a = Math.min(top, tmin);
+      return `<polyline points="${line(v, dy, top, a)}" class="${cls}"/>`
+        + (a > -20 ? `<polyline points="${line(v, dy, a, -20)}" class="${cls} est"/>` : "")
+        + `<polyline points="${line(v, dy, 20, top)}" class="${cls} off"/>`;
+    };
+    const dots = (arr, cls) => arr.map(([T, y]) => `<circle cx="${cx(T)}" cy="${ty(y).toFixed(1)}" r="2" class="${cls}"/>`).join("");
+    const Tn = this._num(c.outdoor), yn = this._num(c.target), vn = this._num(c.flow_in);
+    const heating = this._hass.states[c.status]?.state === "heating";
+    let now = "";
+    if (Tn != null && yn != null) now += `<circle cx="${cx(Tn)}" cy="${ty(yn)}" r="5.5" class="now"/><text x="${+cx(Tn) + 8}" y="${ty(yn) + 13}" class="nowt">Jetzt</text>`;
+    if (sp != null && heating && Tn != null && vn != null) now += `<circle cx="${cx(Tn)}" cy="${ty(vn)}" r="5" class="nowv"/>`;
+    const v = changed ? nw : cur;
+    return `<svg viewBox="0 0 ${W} ${H}" class="hk">${g}
+      <line x1="${tx(thr)}" x2="${tx(thr)}" y1="${T0}" y2="${H - B}" class="thr"/>
+      <text x="${tx(thr) + 3}" y="${T0 + 9}" class="ax">Heizgrenze</text>
+      ${vv.night ? `<polyline points="${line(vv, vv.night, thr, -20)}" class="night"/>` : ""}
+      ${dots(this._vpts, "vp")}${dots(this._pts, "pt")}
+      ${sp != null ? curve(v, "vl", sp) : ""}
+      ${curve(cur, changed ? "old" : "cur")}${changed ? curve(nw, "new") : ""}${now}
+      ${tmin > -20 ? `<text x="${W - R - 2}" y="${ty(this._rl(nw, -20)) + 14}" class="ax" text-anchor="end">geschätzt</text>` : ""}
+    </svg>`;
+  }
+
+  _render() {
+    if (!this._hass || !this._cfg) return;
+    const c = this._cfg, cur = this._vals(false), nw = this._vals(true);
+    const locked = c.lock && this._locked !== false;
+    const changed = this._changed();
+    const sp = c.vorlauf ? this._spread : null;
+    const fmt = (v) => (v == null ? "–" : de(v, 1));
+    const svg = this._svg();
+    const read = cur.end == null ? "" : [10, 0, -10].map((T) => {
+      const a = this._rl(cur, T), b = this._rl(nw, T), d = b - a;
+      const ch = Math.abs(d) >= 0.05;
+      return `<span><small>${T > 0 ? "+" : ""}${T} °C außen</small><b>${ch ? `${fmt(a)} → <em>${fmt(b)}</em>` : `${fmt(a)} °C`}</b>`
+        + (sp != null ? `<small class="vlr">VL ${fmt(b + sp)} °C</small>` : "") + `</span>`;
+    }).join("");
+    const sgn = (v) => (v > 0 ? "+" : "") + de(v, 1);
+    const row = (key, name, sub, icon, col, unit, signed) => `<div class="dev"><span class="ic" style="--c:${col}"><ha-icon icon="${icon}"></ha-icon></span>
+        <span class="name">${name}<small>${sub}</small></span>
+        <span class="step${locked ? " off" : ""}" data-k="${key}"><button data-d="-1">−</button><b>${nw[key] == null ? "–" : (signed ? sgn(nw[key]) : fmt(nw[key]))} ${unit}</b><button data-d="1">+</button></span></div>`;
+    const btns = changed || (c.default && !locked)
+      ? `<div class="acts">${c.default && !locked ? `<button class="b2" data-a="def">Grundeinstellung</button>` : ""}
+           ${changed ? `<button class="b2" data-a="undo">Verwerfen</button><button class="b1" data-a="ok">Übernehmen</button>` : ""}</div>` : "";
+    const html = `<div class="head"><span class="title">${c.title || "Heizkurve"}</span>
+        <button class="lock">${locked ? `<ha-icon icon="mdi:lock"></ha-icon>Gesperrt` : `<ha-icon icon="mdi:lock-open-variant"></ha-icon>Offen`}</button></div>
+      ${svg}
+      <div class="lg"><span><i class="l cur"></i>Rücklauf-Soll${changed ? " bisher" : ""}</span>${changed ? `<span><i class="l new"></i>neu</span>` : ""}
+        ${sp != null ? `<span><i class="l vl"></i>Vorlauf VL (ca. +${de(sp, 1)} K)</span>` : ""}
+        ${cur.night ? `<span><i class="l night"></i>Nacht</span>` : ""}<span><i class="d"></i>gemessen ${c.days} Tage</span></div>
+      <div class="read">${read}</div>
+      ${c.shift === "correction" ? row("correction", "Ganze Kurve", "wärmer / kühler", "mdi:arrow-up-down", "#F57C00", "K", true)
+        : row("foot", "Ganze Kurve", "wärmer / kühler", "mdi:arrow-up-down", "#F57C00", "°C")}
+      ${row("end", "Bei Kälte", "steiler / flacher", "mdi:snowflake-thermometer", "#E2001A", "°C")}
+      ${c.fine ? `
+      ${c.shift === "correction" ? row("foot", "Fußpunkt", "Grundniveau", "mdi:chart-bell-curve-cumulative", "#F57C00", "°C") : ""}
+      ${row("night", "Nacht", "Absenkung", "mdi:weather-night", "#3F51B5", "K", true)}
+      ${row("threshold", "Heizgrenze", "Heizt ab Außen&shy;temperatur", "mdi:arrow-collapse-down", "#2E9E8E", "°C")}` : ""}
+      ${btns}${this._msg ? `<div class="upd">${this._msg}</div>` : ""}`;
+    swPatch(this.shadowRoot, `<style>${STYLE}${HK_STYLE}</style><ha-card style="--sw-pad:14px;--sw-head:10px;--sw-title:17px;--sw-icon:34px;--sw-py:5px;--sw-gap:6px;--sw-name:15px;--sw-val:20px">${html}</ha-card>`);
+    const R = this.shadowRoot;
+    swOn(R.querySelector(".lock"), "click", 901, () => { this._locked = this._locked === false; this._relock(); this._render(); });
+    R.querySelectorAll(".step button").forEach((b) => swOn(b, "click", 902, () => {
+      if (b.parentElement.classList.contains("off")) return;
+      const k = b.parentElement.dataset.k, id = c[k], a = this._hass.states[id]?.attributes || {};
+      const lim = c.limits?.[k] || [a.min ?? -99, a.max ?? 99];
+      const v = Math.round(((this._p[k] ?? this._num(id) ?? 0) + Number(b.dataset.d) * c.step) * 10) / 10;
+      this._p[k] = Math.min(lim[1], Math.max(lim[0], v));
+      if (this._p[k] === this._num(id)) delete this._p[k];
+      this._msg = ""; this._relock(); this._render();
+    }));
+    R.querySelectorAll(".acts button").forEach((b) => swOn(b, "click", 903, () => {
+      const a = b.dataset.a;
+      if (a === "undo") this._p = {};
+      if (a === "def") {
+        this._p = {};
+        const d = { ...(c.shift === "correction" ? { correction: 0 } : {}), ...(c.default || {}) };
+        for (const [k, v] of Object.entries(d)) if (c[k] && v != null && v !== this._num(c[k])) this._p[k] = v;
+      }
+      if (a === "ok") {
+        const jobs = Object.entries(this._p).map(([k, v]) => this._hass.callService("number", "set_value", { entity_id: c[k], value: v }));
+        this._msg = "Wird an die Wärmepumpe gesendet …";
+        Promise.all(jobs).then(() => { this._msg = "Gespeichert. Die Wärmepumpe regelt jetzt nach der neuen Kurve."; })
+          .catch((e) => { this._msg = "Fehler: " + (e.message || e); })
+          .finally(() => setTimeout(() => { this._p = {}; this._render(); }, 2500));
+      }
+      this._relock(); this._render();
+    }));
+  }
+
+  _relock() {
+    clearTimeout(this._lockTmr);
+    if (!this._cfg.lock || this._locked !== false) return;
+    this._lockTmr = setTimeout(() => { this._locked = true; this._render(); }, this._cfg.auto_lock * 1000);
+  }
+  static getStubConfig() { return {}; }
+}
+
+const HK_STYLE = `
+  .head { cursor:default; }
+  .fh { font-size:13px; font-weight:600; color:var(--secondary-text-color); margin:12px 2px 6px; padding-top:10px; border-top:1px solid var(--divider-color, #E0E0E0); }
+  svg.hk { width:100%; height:auto; display:block; margin:2px 0 4px; overflow:visible; }
+  .hk .grid { stroke:var(--divider-color, #E0E0E0); stroke-width:.6; }
+  .hk .ax { font-size:9.5px; fill:var(--secondary-text-color); }
+  .hk polyline { fill:none; stroke-linecap:round; }
+  .hk .cur { stroke:#E2001A; stroke-width:2.4; }
+  .hk .old { stroke:#E2001A; stroke-width:1.6; opacity:.45; }
+  .hk .new { stroke:#F57C00; stroke-width:2.6; }
+  .hk .vl { stroke:#9C27B0; stroke-width:1.6; opacity:.8; }
+  .hk .off { stroke:var(--secondary-text-color); stroke-dasharray:3 3; stroke-width:1.2; opacity:.6; }
+  .hk .est { stroke-dasharray:6 4; }
+  .hk .night { stroke:#3F51B5; stroke-width:1.2; stroke-dasharray:4 3; opacity:.7; }
+  .hk .thr { stroke:#2E9E8E; stroke-width:1; stroke-dasharray:2 3; }
+  .hk .pt { fill:#6AAFD3; opacity:.45; }
+  .hk .vp { fill:#9C27B0; opacity:.25; }
+  .hk .now { fill:#fff; stroke:#E2001A; stroke-width:2.5; }
+  .hk .nowv { fill:#fff; stroke:#9C27B0; stroke-width:2.5; }
+  .hk .nowt { font-size:10px; font-weight:600; fill:var(--primary-text-color); }
+  .lg { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12.5px; color:var(--secondary-text-color); margin-bottom:8px; }
+  .lg i { display:inline-block; vertical-align:middle; margin-right:5px; }
+  .lg .l { width:16px; height:0; border-top:2.5px solid #E2001A; }
+  .lg .l.new { border-top-color:#F57C00; }
+  .lg .l.vl { border-top:2px solid #9C27B0; }
+  .lg .l.night { border-top:1.5px dashed #3F51B5; }
+  .lg .d { width:7px; height:7px; border-radius:50%; background:#6AAFD3; opacity:.6; }
+  .read { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; }
+  .read span { background:var(--secondary-background-color, #F0F0F0); border-radius:8px; padding:5px 7px; min-width:0; }
+  .read small, .read b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .read small { font-size:12px; color:var(--secondary-text-color); }
+  .read small.vlr { color:#9C27B0; margin-top:1px; }
+  .dev .name small { white-space:normal; line-height:1.2; }
+  .read b { font-size:15px; }
+  .read em { font-style:normal; color:#F57C00; }
+  .acts { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .acts button { font:inherit; font-size:15px; border-radius:20px; padding:6px 14px; cursor:pointer; border:1px solid var(--divider-color, #DDD); background:none; color:var(--primary-text-color); }
+  .acts .b1 { background:#E2001A; border-color:#E2001A; color:#fff; font-weight:600; }
+`;
+customElements.define("solarweb-heizkurve", SolarwebHeizkurve);
+window.customCards.push({ type: "solarweb-heizkurve", name: "Solar.web Heizkurve", description: "Heizkurve der Luxtronik als Grafik mit Vorlauf, Messpunkten und Vorschau" });
+
+</script>
+
+<script>
+/* ---- Simulierte Wärmepumpe (Luxtronik-Kennlinie, aus Messdaten ermittelt) ---- */
+(() => {
+  const P = "luxtronik_350520_0351_";
+  const E = {
+    end: "number." + P + "heating_curve_end_temperature",
+    foot: "number." + P + "heating_curve_parallel_shift_temperature",
+    night: "number." + P + "heating_curve_night_temperature",
+    corr: "number." + P + "heating_target_correction",
+    thr: "number." + P + "heating_threshold_temperature",
+    out: "sensor." + P + "outdoor_temperature",
+    tgt: "sensor." + P + "flow_out_temperature_target",
+    vin: "sensor." + P + "flow_in_temperature",
+    vout: "sensor." + P + "flow_out_temperature",
+    stat: "sensor." + P + "status",
+  };
+  const INIT = { end: 38.5, foot: 21, night: -2, corr: 0, thr: 18 };
+  const SPREAD = 5.5;                       // Vorlauf − Rücklauf beim Heizen
+  const K = 36.6, OFF = 2.9;
+  const rl = (v, T) => v.foot + OFF + (v.end - 20) * (20 - T) / K + v.corr;
+
+  let v = { ...INIT }, T = 5, mode = "day";
+  const attrs = {
+    end: { min: 20, max: 70, step: 0.5 }, foot: { min: 5, max: 35, step: 0.5 },
+    night: { min: -10, max: 10, step: 0.5 }, corr: { min: -5, max: 5, step: 0.5 }, thr: { min: 5, max: 30, step: 0.5 },
+  };
+  const st = (s, a = {}) => ({ state: String(s), attributes: a });
+
+  function states() {
+    const heating = T < v.thr;
+    const target = rl(v, T) + (mode === "night" ? v.night : 0);
+    const r1 = (x) => Math.round(x * 10) / 10;
+    return {
+      [E.end]: st(v.end, attrs.end), [E.foot]: st(v.foot, attrs.foot), [E.night]: st(v.night, attrs.night),
+      [E.corr]: st(v.corr, attrs.corr), [E.thr]: st(v.thr, attrs.thr),
+      [E.out]: st(T), [E.tgt]: st(r1(target)),
+      [E.vin]: st(r1(heating ? target + SPREAD : target + 0.5)), [E.vout]: st(r1(target - 0.2)),
+      [E.stat]: st(heating ? "heating" : "no_request"),
+    };
+  }
+
+  // 7 Tage Verlauf erfinden (reproduzierbar): typischer Spätherbst 0 … 11 °C
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const now = Date.now() / 1000, H = { [E.out]: [], [E.tgt]: [], [E.vin]: [], [E.vout]: [], [E.stat]: [] };
+  for (let t = now - 7 * 86400; t < now; t += 600) {
+    const day = (t - (now - 7 * 86400)) / 86400;
+    const hour = new Date(t * 1000).getHours() + new Date(t * 1000).getMinutes() / 60;
+    const To = 5.5 + 3 * Math.sin(day * 0.9) + 2.8 * Math.sin((hour - 9) / 24 * 2 * Math.PI) + (rnd() - .5) * 0.8;
+    const nightOn = hour < 6 || hour >= 22;
+    const y = rl(INIT, To) + (nightOn ? INIT.night : 0) + (rnd() - .5) * 0.25;
+    const on = rnd() < 0.55;
+    H[E.out].push({ s: To.toFixed(1), lu: t });
+    H[E.tgt].push({ s: y.toFixed(1), lu: t + 1 });
+    H[E.stat].push({ s: on ? "heating" : "no_request", lu: t });
+    H[E.vout].push({ s: (y + (rnd() - .5)).toFixed(1), lu: t });
+    const boost = rnd() < 0.08 ? 4 + rnd() * 6 : 0;   // gelegentlich wärmer (nach Warmwasser)
+    H[E.vin].push({ s: (y + (on ? SPREAD + boost : 0.8) + (rnd() - .5) * 1.6).toFixed(1), lu: t });
+  }
+
+  const el = document.createElement("solarweb-heizkurve");
+  el.setConfig({
+    fine: true, shift: "foot", lock: true, auto_lock: 60, days: 7, vorlauf: true,
+    default: { end: INIT.end, foot: INIT.foot }, limits: { end: [30, 45], foot: [16, 26] },
+  });
+  document.getElementById("c").appendChild(el);
+
+  const keyOf = Object.fromEntries(Object.entries(E).map(([k, id]) => [id, k]));
+  const hass = () => ({
+    states: states(),
+    callWS: async (m) => Object.fromEntries((m.entity_ids || []).map((e) => [e, H[e] || []])),
+    callService: (domain, service, data) => new Promise((ok) => setTimeout(() => {
+      const k = keyOf[data.entity_id];
+      if (domain === "number" && service === "set_value" && k in v) v[k] = Number(data.value);
+      push(); ok();
+    }, 500)),
+  });
+  const fmt = (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  function push() {
+    el.hass = hass();
+    const s = states(), heating = s[E.stat].state === "heating";
+    document.getElementById("st").innerHTML = heating
+      ? `Wärmepumpe heizt · Rücklauf-Soll <b>${fmt(+s[E.tgt].state)} °C</b> · Vorlauf ca. <b>${fmt(+s[E.vin].state)} °C</b>`
+      : `Über der Heizgrenze (${fmt(v.thr)} °C) – Wärmepumpe heizt nicht`;
+  }
+
+  const t = document.getElementById("t"), tv = document.getElementById("tv");
+  t.addEventListener("input", () => { T = Number(t.value); tv.textContent = fmt(T) + " °C"; push(); });
+  document.querySelectorAll("#mode button").forEach((b) => b.addEventListener("click", () => {
+    mode = b.dataset.m;
+    document.querySelectorAll("#mode button").forEach((x) => x.classList.toggle("on", x === b));
+    push();
+  }));
+  document.getElementById("reset").addEventListener("click", () => {
+    v = { ...INIT }; T = 5; mode = "day"; t.value = 5; tv.textContent = "5,0 °C";
+    document.querySelectorAll("#mode button").forEach((x) => x.classList.toggle("on", x.dataset.m === "day"));
+    el._p = {}; el._msg = ""; push(); el._render();
+  });
+  push();
+})();
+</script>
+</body>
+</html>
